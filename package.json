@@ -1,0 +1,55 @@
+{
+  "name": "antigravity-chat-tabs",
+  "displayName": "Antigravity Chat Tabs",
+  "description": "Adds a horizontal multi-session tab bar (Kiro style) to the Antigravity IDE Agent side panel, with per-workspace persistence and automatic re-application after IDE updates.",
+  "version": "1.0.0",
+  "publisher": "BernardoCastroDev",
+  "author": {
+    "name": "Bernardo Castro"
+  },
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Appearance"
+  ],
+  "keywords": [
+    "antigravity",
+    "chat",
+    "tabs",
+    "agent",
+    "sessions"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "antigravityChatTabs.enable",
+        "title": "Antigravity Chat Tabs: Enable Session Tabs"
+      },
+      {
+        "command": "antigravityChatTabs.disable",
+        "title": "Antigravity Chat Tabs: Restore Default Header"
+      },
+      {
+        "command": "antigravityChatTabs.status",
+        "title": "Antigravity Chat Tabs: Check Status"
+      }
+    ],
+    "configuration": {
+      "title": "Antigravity Chat Tabs",
+      "properties": {
+        "antigravityChatTabs.autoApplyOnStartup": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically re-apply the Session Tabs bar whenever Antigravity IDE updates."
+        }
+      }
+    }
+  }
+}
