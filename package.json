@@ -2,7 +2,7 @@
   "name": "antigravity-chat-tabs",
   "displayName": "Antigravity Chat Tabs",
   "description": "Adds a horizontal multi-session tab bar (Kiro style) to the Antigravity IDE Agent side panel, with per-workspace persistence and automatic re-application after IDE updates.",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "publisher": "BernardoCastroDev",
   "author": {
     "name": "Bernardo Castro",

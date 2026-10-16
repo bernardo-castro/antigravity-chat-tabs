@@ -5,7 +5,7 @@ const crypto = require("crypto");
 const vm = require("vm");
 
 const PATCH_MARKER = "agy-chat-tabs-bar";
-const PATCH_VERSION = "agy-chat-tabs-v1.4.1";
+const PATCH_VERSION = "agy-chat-tabs-v1.4.2";
 
 function isSpanishEnv() {
   try {
@@ -224,9 +224,9 @@ function buildDynamicPatch(content) {
     if (m1) {
       const [full1, aspV, coF, cidV, wCF, stV, j4eF, fdV, ebuF, eatV, nlF, prefV] = m1;
       const rep1 =
-        `{cascadeContext:{state:{agentStateProvider:${aspV}}}}=${coF}(),${cidV}=${wCF}(),${stV}=${j4eF}(),` +
+        `{cascadeContext:{state:{agentStateProvider:${aspV}}},turnDiffsProvider:_agyTdProv}=${coF}(),${cidV}=${wCF}(),${stV}=${j4eF}(),` +
         `{fileDiffData:_agyRawDiffs}=${ebuF}(),_agyConvSt=${nlF}(${aspV}),` +
-        `${fdV}=(()=>{try{let raw=Array.isArray(_agyRawDiffs)?_agyRawDiffs:[];if(!raw.length)return[];let sec=_agyConvSt?.accumulatedSections?.find(x=>x?.key==="file_diffs"),cDiffs=(sec?sec.items?.map(x=>x?.renderInfo?.content?.case==="fileDiff"?x.renderInfo.content.value:null).filter(Boolean):_agyConvSt?.trajectoryFileDiffs)||[],valid=cDiffs.filter(x=>x&&x.uri&&!x.isArtifactFile&&!x.isKnowledgeFile);if(!valid.length)return[];let norm=u=>{try{return decodeURIComponent(String(u||"")).replace(/^file:\\/\\/\\/?/i,"").replace(/\\\\/g,"/").replace(/^\\/+([a-zA-Z]:)/,"$1").toLowerCase().split("#")[0].replace(/\\/+$/,"")}catch(err){return String(u||"").toLowerCase()}},validSet=new Set(valid.map(x=>norm(x.uri)).filter(Boolean));return raw.filter(it=>it?.uri&&validSet.has(norm(it.uri)))}catch(err){return _agyRawDiffs||[]}})(),` +
+        `${fdV}=(()=>{try{let raw=Array.isArray(_agyRawDiffs)?_agyRawDiffs:[];if(!raw.length||!${cidV})return[];let norm=u=>{try{return decodeURIComponent(String(u||"")).replace(/^file:\\/\\/\\/?/i,"").replace(/\\\\/g,"/").replace(/^\\/+([a-zA-Z]:)/,"$1").toLowerCase().split("#")[0].replace(/\\/+$/,"")}catch(err){return String(u||"").toLowerCase()}},validSet=new Set(),sec=_agyConvSt?.accumulatedSections?.find(x=>x?.key==="file_diffs"),cDiffs=(sec?sec.items?.map(x=>x?.renderInfo?.content?.case==="fileDiff"?x.renderInfo.content.value:null).filter(Boolean):_agyConvSt?.trajectoryFileDiffs)||[];for(let x of cDiffs){if(x?.uri&&!x.isArtifactFile&&!x.isKnowledgeFile)validSet.add(norm(x.uri))}for(let st of(_agyConvSt?.trajectorySlice?.stepsInSlice||[])){let sv=st?.step?.value,sc=st?.step?.case;if(sc==="codeAction"){let sp=sv?.actionSpec?.spec?.value,u=sp?.path?.absoluteUri||sp?.target?.value?.absoluteUri;if(u&&!sv?.isArtifactFile)validSet.add(norm(u))}else if(sc==="generic"){let u=sv?.args?.TargetFile||sv?.args?.AbsolutePath;if(u)validSet.add(norm(u))}}let trajId=_agyConvSt?.trajectorySlice?.trajectoryId,tdMap=_agyTdProv?.getState?.();if(trajId&&tdMap&&typeof tdMap.entries==="function"){for(let[tk,tv]of tdMap.entries()){if(String(tk).startsWith(trajId+":")&&tv?.fileDiffs){for(let[fu,fd]of Object.entries(tv.fileDiffs)){if(!fd?.isArtifactFile)validSet.add(norm(fu))}}}}if(!window._agyDiffOwners){try{window._agyDiffOwners=JSON.parse(window.localStorage.getItem("agy_diff_uri_owners")||"{}")}catch(err){window._agyDiffOwners={}}}let dirty=!1;for(let k of validSet){if(k&&window._agyDiffOwners[k]!==${cidV}){window._agyDiffOwners[k]=${cidV};dirty=!0}}let activeSet=new Set();for(let it of raw){let k=norm(it?.uri);if(!k)continue;activeSet.add(k);if(!window._agyDiffOwners[k]){window._agyDiffOwners[k]=${cidV};dirty=!0}}for(let ok of Object.keys(window._agyDiffOwners)){if(!activeSet.has(ok)&&!validSet.has(ok)){delete window._agyDiffOwners[ok];dirty=!0}}if(dirty){try{window.localStorage.setItem("agy_diff_uri_owners",JSON.stringify(window._agyDiffOwners))}catch(err){}}return raw.filter(it=>{let k=norm(it?.uri);return Boolean(k&&(validSet.has(k)||window._agyDiffOwners[k]===${cidV}))})}catch(err){return _agyRawDiffs||[]}})(),` +
         `{enableAutoExpandToolbar:${eatV}}=${nlF}(${prefV})`;
       tbRegion = tbRegion.replace(full1, rep1);
 
