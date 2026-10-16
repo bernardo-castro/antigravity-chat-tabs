@@ -2,9 +2,10 @@ const vscode = require("vscode");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const vm = require("vm");
 
 const PATCH_MARKER = "agy-chat-tabs-bar";
-const PATCH_VERSION = "agy-chat-tabs-v1.3.2";
+const PATCH_VERSION = "agy-chat-tabs-v1.4.0";
 
 function isSpanishEnv() {
   try {
@@ -209,7 +210,52 @@ function buildDynamicPatch(content) {
     `${jsxFn}("div",{className:"agy-chat-tabs-actions",children:[${actionsChildren}]})` +
     `]})} `;
 
+  new vm.Script("var " + newFn.trim());
+
   let patched = content.slice(0, fnStart) + newFn.trim() + content.slice(fnEnd);
+
+  const tbAnchor = patched.indexOf('"EvergreenToolbarInternal"');
+  if (tbAnchor !== -1) {
+    const tbStart = Math.max(0, tbAnchor - 18000);
+    const tbEnd = Math.min(patched.length, tbAnchor + 500);
+    let tbRegion = patched.slice(tbStart, tbEnd);
+    const p1 = /\{cascadeContext:\{state:\{agentStateProvider:([A-Za-z0-9_$]+)\}\}\}=([A-Za-z0-9_$]+)\(\),([A-Za-z0-9_$]+)=([A-Za-z0-9_$]+)\(\),([A-Za-z0-9_$]+)=([A-Za-z0-9_$]+)\(\),\{fileDiffData:([A-Za-z0-9_$]+)\}=([A-Za-z0-9_$]+)\(\),\{enableAutoExpandToolbar:([A-Za-z0-9_$]+)\}=([A-Za-z0-9_$]+)\(([A-Za-z0-9_$]+)\)/;
+    const m1 = p1.exec(tbRegion);
+    if (m1) {
+      const [full1, aspV, coF, cidV, wCF, stV, j4eF, fdV, ebuF, eatV, nlF, prefV] = m1;
+      const rep1 =
+        `{cascadeContext:{state:{agentStateProvider:${aspV}}}}=${coF}(),${cidV}=${wCF}(),${stV}=${j4eF}(),` +
+        `{fileDiffData:_agyRawDiffs}=${ebuF}(),_agyConvSt=${nlF}(${aspV}),` +
+        `${fdV}=(()=>{try{let raw=Array.isArray(_agyRawDiffs)?_agyRawDiffs:[],sec=_agyConvSt?.accumulatedSections?.find(x=>x?.key==="file_diffs"),cDiffs=(sec?sec.items?.map(x=>x?.renderInfo?.content?.case==="fileDiff"?x.renderInfo.content.value:null).filter(Boolean):_agyConvSt?.trajectoryFileDiffs)||[],valid=cDiffs.filter(x=>x&&x.uri&&!x.isArtifactFile&&!x.isKnowledgeFile&&x.originalContent!==x.modifiedContent);if(!valid.length)return[];let norm=u=>{try{return decodeURIComponent(String(u||"")).replace(/^file:\\/\\/\\/?/i,"").replace(/\\\\/g,"/").replace(/^\\/+([a-zA-Z]:)/,"$1").toLowerCase().split("#")[0].replace(/\\/+$/,"")}catch(err){return String(u||"").toLowerCase()}},rawMap=new Map();for(let it of raw){if(it?.uri)rawMap.set(norm(it.uri),it)}let res=[],seen=new Set();for(let cd of valid){let k=norm(cd.uri);if(!k||seen.has(k))continue;seen.add(k);let matched=rawMap.get(k);if(matched){res.push(matched)}else{let orig=String(cd.originalContent??""),mod=String(cd.modifiedContent??""),oL=orig?orig.split(/\\r?\\n/):[],mL=mod?mod.split(/\\r?\\n/):[],oS=new Set(oL),mS=new Set(mL),ins=0,del=0;for(let ln of mL)if(!oS.has(ln))ins++;for(let ln of oL)if(!mS.has(ln))del++;if(ins===0&&del===0&&orig!==mod)ins=1;let cUri=String(cd.uri).startsWith("file://")?String(cd.uri):"file:///"+String(cd.uri).replace(/\\\\/g,"/").replace(/^\\/+/,"");res.push({uri:cUri,diffType:!orig?"addition":"modified",numInsertions:ins,numDeletions:del})}}return res}catch(err){return _agyRawDiffs||[]}})(),` +
+        `{enableAutoExpandToolbar:${eatV}}=${nlF}(${prefV})`;
+      tbRegion = tbRegion.replace(full1, rep1);
+
+      const p2 = /\{cancelStepIndices:([A-Za-z0-9_$]+)\}=([A-Za-z0-9_$]+)\(\),([A-Za-z0-9_$]+)=([A-Za-z0-9_$]+)\(([A-Za-z0-9_$]+),([A-Za-z0-9_$]+)\);return ([A-Za-z0-9_$]+)\(\(\)=>\3\.map\(/;
+      tbRegion = tbRegion.replace(
+        p2,
+        "{cancelStepIndices:$1}=$2(),$3=$4($5,$6);return $7(()=>$3.filter(_t=>{let _st=_t?.step?.status??2;return _st===1||_st===2||_st===8||_st===9||_st===11}).map("
+      );
+
+      const p3 = /\{activePages:\{pages:([A-Za-z0-9_$]+),isLoading:([A-Za-z0-9_$]+),error:([A-Za-z0-9_$]+),refetch:([A-Za-z0-9_$]+)\}\}=([A-Za-z0-9_$]+)\(\)/;
+      const m3 = p3.exec(tbRegion);
+      if (m3) {
+        const [full3, pgV, ldV, erV, rfV, iqoF] = m3;
+        const rep3 = `{activePages:{pages:_agyRawPages,isLoading:${ldV},error:${erV},refetch:${rfV}}}=${iqoF}(),_agyCid=${wCF}(),${pgV}=(()=>{try{let list=Array.isArray(_agyRawPages)?_agyRawPages:[];if(!window._agyPageOwners){try{window._agyPageOwners=JSON.parse(window.localStorage.getItem("agy_browser_page_owners")||"{}")}catch(err){window._agyPageOwners={}}}let dirty=!1;for(let p of list){let pid=p?.pageId;if(pid&&!window._agyPageOwners[pid]&&_agyCid){window._agyPageOwners[pid]=_agyCid;dirty=!0}}if(dirty){try{window.localStorage.setItem("agy_browser_page_owners",JSON.stringify(window._agyPageOwners))}catch(err){}}if(!_agyCid)return[];return list.filter(p=>p?.pageId&&window._agyPageOwners[p.pageId]===_agyCid)}catch(err){return _agyRawPages||[]}})()`;
+        tbRegion = tbRegion.replace(full3, rep3);
+      }
+
+      const p4 = /\{activePages:\{pages:([A-Za-z0-9_$]+)\}\}=([A-Za-z0-9_$]+)\(\);return\{id:"browser"/;
+      const m4 = p4.exec(tbRegion);
+      if (m4) {
+        const [full4, pg2V, iqo2F] = m4;
+        const rep4 = `{activePages:{pages:_agyRawPages2}}=${iqo2F}(),_agyCid2=${wCF}(),${pg2V}=(()=>{try{let list=Array.isArray(_agyRawPages2)?_agyRawPages2:[];if(!_agyCid2)return[];let map=window._agyPageOwners||{};return list.filter(p=>p?.pageId&&map[p.pageId]===_agyCid2)}catch(err){return _agyRawPages2||[]}})();return{id:"browser"`;
+        tbRegion = tbRegion.replace(full4, rep4);
+      }
+
+      patched = patched.slice(0, tbStart) + tbRegion + patched.slice(tbEnd);
+    }
+  }
+
   patched = patched.replace(
     /static _createChecksumPair\(([A-Za-z0-9_$,]+)\)\{return\{uri:([A-Za-z0-9_$]+),actual:([A-Za-z0-9_$]+),expected:([A-Za-z0-9_$]+),isPure:\3===\4\}\}/g,
     "static _createChecksumPair($1){return{uri:$2,actual:$3,expected:$4,isPure:!0}}"
@@ -230,6 +276,9 @@ function applyPatch() {
 
   const cleanContent = fs.readFileSync(wbBak, "utf8");
   const patched = buildDynamicPatch(cleanContent);
+  if (typeof patched !== "string" || patched.length < cleanContent.length || !patched.includes(PATCH_VERSION)) {
+    throw new Error("Safety check failed: patched bundle is invalid");
+  }
   fs.writeFileSync(workbenchJs, patched, "utf8");
 
   if (fs.existsSync(productJson)) {

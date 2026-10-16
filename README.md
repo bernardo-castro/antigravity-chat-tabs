@@ -6,8 +6,13 @@ Adds a **Kiro-style horizontal multi-session tab bar** to the **Antigravity IDE*
 
 ---
 
-## ✨ Features (v1.3.2)
+## ✨ Features (v1.4.0)
 
+- **Per-Tab Context Isolation (Files, Consoles, Artifacts & Browser)**:
+  - 📄 **Isolated `Changes Overview`**: Each conversation tab displays and tracks only the files created or modified by *that* session (never mixing diffs from other parallel tabs or losing the trace of modified documents).
+  - `>_` **Isolated Background Consoles**: Filters background terminal processes per session and hides completed/canceled tasks automatically.
+  - 📥 **Isolated Artifacts**: Displays only the artifacts generated within the active conversation.
+  - 🌐 **Isolated Browser Pages**: Associates active browser pages with the conversation tab that launched them.
 - **Parallel Multi-Session Status Indicators**:
   - 🔄 **Thinking / Processing Spinner**: Animated cyan spinner while a background tab is actively thinking or executing tools (synchronized directly with `agentStateProvider.status` for instant idle transitions).
   - 🟠 **Needs Attention Alert**: Pulsing amber badge + amber tab highlight when a background conversation is waiting for your approval or input.
@@ -22,12 +27,16 @@ Adds a **Kiro-style horizontal multi-session tab bar** to the **Antigravity IDE*
   - `✕ Close tab` / `⇄ Close other tabs` / `⇥ Close tabs to the right`
   - `⟲ Reopen last closed tab`
 - **Integrated `+ New Session` Tab**: Start a new parallel conversation in one click without losing your open conversation tabs.
-- **Auto-Healing Across IDE Updates**: Automatically detects when Antigravity IDE updates itself and re-applies the Session Tabs bar on startup.
+- **Auto-Healing & Syntax Safety Guard**: Automatically detects when Antigravity IDE updates itself, validates patched code syntax in memory (`vm.Script`), and re-applies the Session Tabs bar safely on startup.
 
 ---
 
-## 🇪🇸 Características en Español (`v1.3.2`)
+## 🇪🇸 Características en Español (`v1.4.0`)
 
+- **Aislamiento Total por Pestaña (Archivos, Consolas, Artifacts y Browser)**:
+  - 📄 **Archivos Modificados (`Changes Overview`) por sesión**: Cada pestaña muestra y conserva la traza únicamente de los documentos creados o editados en esa conversación, sin mezclarse con otras pestañas en paralelo.
+  - `>_` **Consolas en segundo plano por sesión**: Muestra solo los procesos actualmente en ejecución de esa pestaña.
+  - 📥 **Artifacts y 🌐 Browser aislados por conversación**.
 - **Indicadores de Sesiones en Paralelo en Tiempo Real**:
   - 🔄 **Pensando / Procesando**: Spinner cian animado mientras el agente trabaja en segundo plano.
   - 🟠 **Requiere tu atención**: Punto ámbar pulsante y borde naranja cuando el agente necesita tu aprobación o respuesta.
