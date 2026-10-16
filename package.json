@@ -5,7 +5,16 @@
   "version": "1.3.2",
   "publisher": "BernardoCastroDev",
   "author": {
-    "name": "Bernardo Castro"
+    "name": "Bernardo Castro",
+    "url": "https://github.com/bernardo-castro"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bernardo-castro/antigravity-chat-tabs.git"
+  },
+  "homepage": "https://github.com/bernardo-castro/antigravity-chat-tabs#readme",
+  "bugs": {
+    "url": "https://github.com/bernardo-castro/antigravity-chat-tabs/issues"
   },
   "license": "MIT",
   "icon": "icon.png",
