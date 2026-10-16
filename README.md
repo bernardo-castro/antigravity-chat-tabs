@@ -6,10 +6,10 @@ Adds a **Kiro-style horizontal multi-session tab bar** to the **Antigravity IDE*
 
 ---
 
-## ✨ Features (v1.3.0)
+## ✨ Features (v1.3.2)
 
 - **Parallel Multi-Session Status Indicators**:
-  - 🔄 **Thinking / Processing Spinner**: Animated cyan spinner while a background tab is actively thinking or executing tools.
+  - 🔄 **Thinking / Processing Spinner**: Animated cyan spinner while a background tab is actively thinking or executing tools (synchronized directly with `agentStateProvider.status` for instant idle transitions).
   - 🟠 **Needs Attention Alert**: Pulsing amber badge + amber tab highlight when a background conversation is waiting for your approval or input.
   - ✅ **Completed / Unread Response (`✓`)**: Glowing emerald checkmark badge when a background tab finishes responding while you are working in another tab (clears automatically when you view the tab).
 - **Automatic Bilingual UI (English & Español)**: Automatically detects the IDE language (`en` / `es`) and displays all menus, tooltips, and notifications in your language.
@@ -26,7 +26,7 @@ Adds a **Kiro-style horizontal multi-session tab bar** to the **Antigravity IDE*
 
 ---
 
-## 🇪🇸 Características en Español (`v1.3.0`)
+## 🇪🇸 Características en Español (`v1.3.2`)
 
 - **Indicadores de Sesiones en Paralelo en Tiempo Real**:
   - 🔄 **Pensando / Procesando**: Spinner cian animado mientras el agente trabaja en segundo plano.
