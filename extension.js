@@ -4,7 +4,15 @@ const path = require("path");
 const crypto = require("crypto");
 
 const PATCH_MARKER = "agy-chat-tabs-bar";
-const PATCH_VERSION = "agy-chat-tabs-v1.2.0";
+const PATCH_VERSION = "agy-chat-tabs-v1.3.0";
+
+function isSpanishEnv() {
+  try {
+    return String(vscode.env?.language || "en").toLowerCase().startsWith("es");
+  } catch (e) {
+    return false;
+  }
+}
 
 function getIdeFiles() {
   const appRoot = vscode.env.appRoot;
@@ -106,11 +114,13 @@ function buildDynamicPatch(content) {
 
   const normHelper = `(raw=>{try{let p=typeof raw==="string"?JSON.parse(raw):raw;if(p&&typeof p==="object")return{openIds:Array.isArray(p.openIds)?p.openIds:[],closedIds:Array.isArray(p.closedIds)?p.closedIds:[],pinnedIds:Array.isArray(p.pinnedIds)?p.pinnedIds:[],customTitles:p.customTitles&&typeof p.customTitles==="object"?p.customTitles:{}}}catch(e){}return{openIds:[],closedIds:[],pinnedIds:[],customTitles:{}}})`;
 
+  const i18nHelper = `(()=>{let lang=String(window.navigator?.language||document.documentElement?.lang||"en").toLowerCase();return lang.startsWith("es")?{newSession:"Nueva sesión",newSessionTip:"Nueva conversación en paralelo (Ctrl+Shift+L)",backParent:"Volver al padre",unpinTip:"Desfijar pestaña",closeTip:"Cerrar pestaña",tabHint:"(Doble clic para renombrar · Clic derecho para opciones)",waitDefault:"Requiere tu atención / confirmación",thinkingTip:"Pensando / procesando en paralelo...",doneTip:"Terminó de responder — clic para revisar",doneShort:"Respuesta lista",rename:"✏️ Renombrar pestaña",dblClick:"2×Clic",restoreTitle:"↺ Restaurar título original",pin:"📌 Fijar pestaña al inicio",unpin:"📌 Desfijar pestaña",close:"✕ Cerrar pestaña",closeOthers:"⇄ Cerrar otras pestañas",closeRight:"⇥ Cerrar pestañas a la derecha",reopenLast:"⟲ Reabrir última pestaña cerrada",convFallback:"Conversación"}:{newSession:"New Session",newSessionTip:"New parallel conversation (Ctrl+Shift+L)",backParent:"Back to parent",unpinTip:"Unpin tab",closeTip:"Close tab",tabHint:"(Double-click to rename · Right-click for options)",waitDefault:"Needs your attention / confirmation",thinkingTip:"Thinking / processing in parallel...",doneTip:"Finished responding — click to review",doneShort:"Response ready",rename:"✏️ Rename tab",dblClick:"2×Click",restoreTitle:"↺ Restore original title",pin:"📌 Pin tab to start",unpin:"📌 Unpin tab",close:"✕ Close tab",closeOthers:"⇄ Close other tabs",closeRight:"⇥ Close tabs to the right",reopenLast:"⟲ Reopen last closed tab",convFallback:"Conversation"}})()`;
+
   const newFn =
     preamble +
     `,_agyServices=${ofFn}(),_agyTs=${nlFn}(_agyServices.trajectorySummariesProvider),_agyWs=${nlFn}(_agyServices.workspaceInfoProvider)` +
     `,_agySummaries=_agyTs?.summaries||{},_agyWsUris=_agyWs?.workspaceUris||[],_agyWsKey="agy_chat_tabs_v2_"+(_agyWsUris[0]||"global")` +
-    `,_agyNorm=${normHelper}` +
+    `,_agyNorm=${normHelper},_agyT=${i18nHelper}` +
     `,[_agyTabState,_agySetTabState]=${useStateFn}(()=>_agyNorm(window.localStorage.getItem(_agyWsKey)))` +
     `,[_agyEditingId,_agySetEditingId]=${useStateFn}(null)` +
     `,[_agyEditVal,_agySetEditVal]=${useStateFn}("")` +
@@ -180,20 +190,20 @@ function buildDynamicPatch(content) {
     `\`}),` +
     `${activeTabVar}!=="conversation"?${jsxFn}("div",{className:"flex items-center px-2 py-1",children:${backBtnJsx}}):` +
     `${jsxFn}("div",{ref:_agyTabsRef,onWheel:ev=>{if(_agyTabsRef.current&&ev.deltaY!==0)_agyTabsRef.current.scrollLeft+=ev.deltaY},className:"agy-chat-tabs-strip",children:[` +
-    `${parentIdVar}&&${jsxFn}("div",{onClick:()=>{${setCascadeVar}(${parentIdVar})},title:\`Back to parent: \${${parentTitleVar}}\`,className:"agy-chat-tab",style:{minWidth:"auto"},children:[${jsxFn}(${iconComp},{name:"arrow_back",size:13}),${jsxFn}("span",{className:"truncate",style:{maxWidth:"80px"},children:${parentTitleVar}})]}),` +
-    `..._agyDisplayTabs.map(tabId=>{let sum=_agySummaries[tabId],rawTitle=sum?.summary||(tabId===${curIdVar}?${cascadeIdVar}:"Conversation"),customTitle=_agyTabState.customTitles&&_agyTabState.customTitles[tabId],title=customTitle||rawTitle,isPinned=(_agyTabState.pinnedIds||[]).includes(tabId),isEditing=_agyEditingId===tabId,isActive=${activeTabVar}==="conversation"&&${curIdVar}===tabId,isWaiting=Boolean(sum?.waitingSteps&&sum.waitingSteps.length>0),isRunning=Boolean(sum?.notFullyIdle)&&!isWaiting,isDoneUnread=!isRunning&&!isWaiting&&!isActive&&(_agyUnreadDone.includes(tabId)||Boolean(sum?.annotations?.markedAsUnread)),waitMsg=sum?.waitingSteps?.[0]?.step?.metadata?.toolSummary||"Requiere tu atención / confirmación";return ${jsxFn}("div",{"data-agy-tab":tabId,draggable:!isEditing,onDragStart:ev=>{_agySetDragId(tabId);try{ev.dataTransfer.effectAllowed="move";ev.dataTransfer.setData("text/plain",tabId)}catch(e){}},onDragOver:ev=>{ev.preventDefault();if(_agyDragId&&_agyDragId!==tabId&&_agyDragOverId!==tabId)_agySetDragOverId(tabId)},onDragLeave:()=>{if(_agyDragOverId===tabId)_agySetDragOverId(null)},onDrop:ev=>{ev.preventDefault();ev.stopPropagation();if(_agyDragId&&_agyDragId!==tabId)_agyReorderTabs(_agyDragId,tabId);_agySetDragId(null);_agySetDragOverId(null)},onDragEnd:()=>{_agySetDragId(null);_agySetDragOverId(null)},onClick:()=>{if(!isEditing){_agySetUnreadDone(prev=>prev.filter(id=>id!==tabId));${backToConvExpr};${setCascadeVar}(tabId)}},onDoubleClick:ev=>{ev.stopPropagation();_agyStartRename(tabId,rawTitle)},onContextMenu:ev=>{ev.preventDefault();ev.stopPropagation();_agySetCtxMenu({x:Math.min(ev.clientX,window.innerWidth-200),y:Math.min(ev.clientY,window.innerHeight-220),tabId,rawTitle,isPinned,hasCustom:Boolean(customTitle)})},onAuxClick:ev=>{if(ev.button===1&&!isPinned)_agyCloseTab(ev,tabId)},title:isWaiting?\`⚠️ \${title} — \${waitMsg}\`:isRunning?\`🔄 \${title} — Pensando / procesando...\`:isDoneUnread?\`✅ \${title} — Respuesta lista\`:isPinned?\`📌 \${title} (Doble clic para renombrar · Clic derecho para opciones)\`:\`\${title} (Doble clic para renombrar · Clic derecho para opciones)\`,className:"agy-chat-tab"+(isActive?" active":"")+(isEditing?" editing":"")+(isPinned?" pinned":"")+(isRunning?" is-running":"")+(isWaiting?" waiting-attention":"")+(isDoneUnread?" done-unread":"")+(_agyDragId===tabId?" dragging":"")+(_agyDragOverId===tabId?" drag-over":""),children:[isPinned?${jsxFn}("span",{className:"agy-chat-tab-pin",onClick:ev=>{ev.stopPropagation();_agyTogglePin(tabId)},title:"Desfijar pestaña",children:"📌"}):null,isWaiting?${jsxFn}("span",{className:"agy-status-waiting",title:\`⚠️ \${waitMsg}\`}):isRunning?${jsxFn}("span",{className:"agy-status-thinking",title:"🔄 Pensando / procesando en paralelo..."}):isDoneUnread?${jsxFn}("span",{className:"agy-status-done",title:"✅ Terminó de responder — clic para revisar",children:"✓"}):null,isEditing?${jsxFn}("input",{type:"text",spellCheck:!1,ref:el=>{if(el&&!el.dataset.agyInit){el.dataset.agyInit="1";el.focus();try{let l=el.value.length;el.setSelectionRange(l,l)}catch(e){}setTimeout(()=>{try{el.focus();let l=el.value.length;el.setSelectionRange(l,l)}catch(e){}},15)}},className:"agy-chat-tab-input",style:{background:"transparent",backgroundColor:"transparent",color:"inherit",border:"none",outline:"none",boxShadow:"none",padding:0,margin:0,width:"100%",minWidth:"40px",fontSize:"12px",fontFamily:"inherit",fontWeight:"inherit",lineHeight:"inherit",height:"auto",caretColor:"#60a5fa"},value:_agyEditVal,onClick:ev=>ev.stopPropagation(),onDoubleClick:ev=>ev.stopPropagation(),onMouseDown:ev=>ev.stopPropagation(),onChange:ev=>_agySetEditVal(ev.target.value),onBlur:()=>_agyCommitRename(tabId,_agyEditVal),onKeyDown:ev=>{ev.stopPropagation();if(ev.key==="Enter")_agyCommitRename(tabId,_agyEditVal);else if(ev.key==="Escape")_agySetEditingId(null)}}):${jsxFn}("span",{className:"truncate flex-1",children:title}),!isPinned&&!isEditing?${jsxFn}("span",{onClick:ev=>_agyCloseTab(ev,tabId),title:"Cerrar pestaña",className:"agy-chat-tab-close",children:${jsxFn}(${iconComp},{name:"close",size:12})}):null]},tabId)}),` +
-    `${jsxFn}("div",{"data-agy-tab":"__new__",onClick:()=>{${backToConvExpr};if(${curIdVar}){${newConvClickCode}}},title:"Nueva conversación en paralelo (Ctrl+Shift+L)",className:"agy-chat-tab new-session"+(${isNewVar}?" active":""),children:[${jsxFn}(${iconComp},{name:"add",size:14}),${jsxFn}("span",{className:"whitespace-nowrap",children:"New Session"})]})` +
+    `${parentIdVar}&&${jsxFn}("div",{onClick:()=>{${setCascadeVar}(${parentIdVar})},title:\`\${_agyT.backParent}: \${${parentTitleVar}}\`,className:"agy-chat-tab",style:{minWidth:"auto"},children:[${jsxFn}(${iconComp},{name:"arrow_back",size:13}),${jsxFn}("span",{className:"truncate",style:{maxWidth:"80px"},children:${parentTitleVar}})]}),` +
+    `..._agyDisplayTabs.map(tabId=>{let sum=_agySummaries[tabId],rawTitle=sum?.summary||(tabId===${curIdVar}?${cascadeIdVar}:_agyT.convFallback),customTitle=_agyTabState.customTitles&&_agyTabState.customTitles[tabId],title=customTitle||rawTitle,isPinned=(_agyTabState.pinnedIds||[]).includes(tabId),isEditing=_agyEditingId===tabId,isActive=${activeTabVar}==="conversation"&&${curIdVar}===tabId,isWaiting=Boolean(sum?.waitingSteps&&sum.waitingSteps.length>0),isRunning=Boolean(sum?.notFullyIdle)&&!isWaiting,isDoneUnread=!isRunning&&!isWaiting&&!isActive&&(_agyUnreadDone.includes(tabId)||Boolean(sum?.annotations?.markedAsUnread)),waitMsg=sum?.waitingSteps?.[0]?.step?.metadata?.toolSummary||_agyT.waitDefault;return ${jsxFn}("div",{"data-agy-tab":tabId,draggable:!isEditing,onDragStart:ev=>{_agySetDragId(tabId);try{ev.dataTransfer.effectAllowed="move";ev.dataTransfer.setData("text/plain",tabId)}catch(e){}},onDragOver:ev=>{ev.preventDefault();if(_agyDragId&&_agyDragId!==tabId&&_agyDragOverId!==tabId)_agySetDragOverId(tabId)},onDragLeave:()=>{if(_agyDragOverId===tabId)_agySetDragOverId(null)},onDrop:ev=>{ev.preventDefault();ev.stopPropagation();if(_agyDragId&&_agyDragId!==tabId)_agyReorderTabs(_agyDragId,tabId);_agySetDragId(null);_agySetDragOverId(null)},onDragEnd:()=>{_agySetDragId(null);_agySetDragOverId(null)},onClick:()=>{if(!isEditing){_agySetUnreadDone(prev=>prev.filter(id=>id!==tabId));${backToConvExpr};${setCascadeVar}(tabId)}},onDoubleClick:ev=>{ev.stopPropagation();_agyStartRename(tabId,rawTitle)},onContextMenu:ev=>{ev.preventDefault();ev.stopPropagation();_agySetCtxMenu({x:Math.min(ev.clientX,window.innerWidth-210),y:Math.min(ev.clientY,window.innerHeight-230),tabId,rawTitle,isPinned,hasCustom:Boolean(customTitle)})},onAuxClick:ev=>{if(ev.button===1&&!isPinned)_agyCloseTab(ev,tabId)},title:isWaiting?\`⚠️ \${title} — \${waitMsg}\`:isRunning?\`🔄 \${title} — \${_agyT.thinkingTip}\`:isDoneUnread?\`✅ \${title} — \${_agyT.doneShort}\`:isPinned?\`📌 \${title} \${_agyT.tabHint}\`:\`\${title} \${_agyT.tabHint}\`,className:"agy-chat-tab"+(isActive?" active":"")+(isEditing?" editing":"")+(isPinned?" pinned":"")+(isRunning?" is-running":"")+(isWaiting?" waiting-attention":"")+(isDoneUnread?" done-unread":"")+(_agyDragId===tabId?" dragging":"")+(_agyDragOverId===tabId?" drag-over":""),children:[isPinned?${jsxFn}("span",{className:"agy-chat-tab-pin",onClick:ev=>{ev.stopPropagation();_agyTogglePin(tabId)},title:_agyT.unpinTip,children:"📌"}):null,isWaiting?${jsxFn}("span",{className:"agy-status-waiting",title:\`⚠️ \${waitMsg}\`}):isRunning?${jsxFn}("span",{className:"agy-status-thinking",title:\`🔄 \${_agyT.thinkingTip}\`}):isDoneUnread?${jsxFn}("span",{className:"agy-status-done",title:\`✅ \${_agyT.doneTip}\`,children:"✓"}):null,isEditing?${jsxFn}("input",{type:"text",spellCheck:!1,ref:el=>{if(el&&!el.dataset.agyInit){el.dataset.agyInit="1";el.focus();try{let l=el.value.length;el.setSelectionRange(l,l)}catch(e){}setTimeout(()=>{try{el.focus();let l=el.value.length;el.setSelectionRange(l,l)}catch(e){}},15)}},className:"agy-chat-tab-input",style:{background:"transparent",backgroundColor:"transparent",color:"inherit",border:"none",outline:"none",boxShadow:"none",padding:0,margin:0,width:"100%",minWidth:"40px",fontSize:"12px",fontFamily:"inherit",fontWeight:"inherit",lineHeight:"inherit",height:"auto",caretColor:"#60a5fa"},value:_agyEditVal,onClick:ev=>ev.stopPropagation(),onDoubleClick:ev=>ev.stopPropagation(),onMouseDown:ev=>ev.stopPropagation(),onChange:ev=>_agySetEditVal(ev.target.value),onBlur:()=>_agyCommitRename(tabId,_agyEditVal),onKeyDown:ev=>{ev.stopPropagation();if(ev.key==="Enter")_agyCommitRename(tabId,_agyEditVal);else if(ev.key==="Escape")_agySetEditingId(null)}}):${jsxFn}("span",{className:"truncate flex-1",children:title}),!isPinned&&!isEditing?${jsxFn}("span",{onClick:ev=>_agyCloseTab(ev,tabId),title:_agyT.closeTip,className:"agy-chat-tab-close",children:${jsxFn}(${iconComp},{name:"close",size:12})}):null]},tabId)}),` +
+    `${jsxFn}("div",{"data-agy-tab":"__new__",onClick:()=>{${backToConvExpr};if(${curIdVar}){${newConvClickCode}}},title:_agyT.newSessionTip,className:"agy-chat-tab new-session"+(${isNewVar}?" active":""),children:[${jsxFn}(${iconComp},{name:"add",size:14}),${jsxFn}("span",{className:"whitespace-nowrap",children:_agyT.newSession})]})` +
     `]}),` +
     `_agyCtxMenu?${jsxFn}("div",{className:"agy-chat-ctx-menu",style:{left:_agyCtxMenu.x+"px",top:_agyCtxMenu.y+"px"},children:[` +
-    `${jsxFn}("div",{className:"agy-chat-ctx-item",onClick:()=>_agyStartRename(_agyCtxMenu.tabId,_agyCtxMenu.rawTitle),children:[${jsxFn}("span",{children:"✏️ Renombrar pestaña"}),${jsxFn}("span",{style:{opacity:0.5,fontSize:"10px"},children:"2×Clic"})]}),` +
-    `_agyCtxMenu.hasCustom?${jsxFn}("div",{className:"agy-chat-ctx-item",onClick:()=>{_agyCommitRename(_agyCtxMenu.tabId,"");_agySetCtxMenu(null)},children:${jsxFn}("span",{children:"↺ Restaurar título original"})}):null,` +
-    `${jsxFn}("div",{className:"agy-chat-ctx-item",onClick:()=>_agyTogglePin(_agyCtxMenu.tabId),children:${jsxFn}("span",{children:_agyCtxMenu.isPinned?"📌 Desfijar pestaña":"📌 Fijar pestaña al inicio"})}),` +
+    `${jsxFn}("div",{className:"agy-chat-ctx-item",onClick:()=>_agyStartRename(_agyCtxMenu.tabId,_agyCtxMenu.rawTitle),children:[${jsxFn}("span",{children:_agyT.rename}),${jsxFn}("span",{style:{opacity:0.5,fontSize:"10px"},children:_agyT.dblClick})]}),` +
+    `_agyCtxMenu.hasCustom?${jsxFn}("div",{className:"agy-chat-ctx-item",onClick:()=>{_agyCommitRename(_agyCtxMenu.tabId,"");_agySetCtxMenu(null)},children:${jsxFn}("span",{children:_agyT.restoreTitle})}):null,` +
+    `${jsxFn}("div",{className:"agy-chat-ctx-item",onClick:()=>_agyTogglePin(_agyCtxMenu.tabId),children:${jsxFn}("span",{children:_agyCtxMenu.isPinned?_agyT.unpin:_agyT.pin})}),` +
     `${jsxFn}("div",{className:"agy-chat-ctx-sep"}),` +
-    `${jsxFn}("div",{className:"agy-chat-ctx-item",onClick:ev=>{_agyCloseTab(ev,_agyCtxMenu.tabId);_agySetCtxMenu(null)},children:${jsxFn}("span",{children:"✕ Cerrar pestaña"})}),` +
-    `${jsxFn}("div",{className:"agy-chat-ctx-item",onClick:()=>_agyCloseOthers(_agyCtxMenu.tabId),children:${jsxFn}("span",{children:"⇄ Cerrar otras pestañas"})}),` +
-    `${jsxFn}("div",{className:"agy-chat-ctx-item",onClick:()=>_agyCloseRight(_agyCtxMenu.tabId),children:${jsxFn}("span",{children:"⇥ Cerrar pestañas a la derecha"})}),` +
+    `${jsxFn}("div",{className:"agy-chat-ctx-item",onClick:ev=>{_agyCloseTab(ev,_agyCtxMenu.tabId);_agySetCtxMenu(null)},children:${jsxFn}("span",{children:_agyT.close})}),` +
+    `${jsxFn}("div",{className:"agy-chat-ctx-item",onClick:()=>_agyCloseOthers(_agyCtxMenu.tabId),children:${jsxFn}("span",{children:_agyT.closeOthers})}),` +
+    `${jsxFn}("div",{className:"agy-chat-ctx-item",onClick:()=>_agyCloseRight(_agyCtxMenu.tabId),children:${jsxFn}("span",{children:_agyT.closeRight})}),` +
     `(_agyTabState.closedIds&&_agyTabState.closedIds.length>0)?${jsxFn}("div",{className:"agy-chat-ctx-sep"}):null,` +
-    `(_agyTabState.closedIds&&_agyTabState.closedIds.length>0)?${jsxFn}("div",{className:"agy-chat-ctx-item",onClick:()=>_agyReopenLast(),children:${jsxFn}("span",{children:"⟲ Reabrir última pestaña cerrada"})}):null` +
+    `(_agyTabState.closedIds&&_agyTabState.closedIds.length>0)?${jsxFn}("div",{className:"agy-chat-ctx-item",onClick:()=>_agyReopenLast(),children:${jsxFn}("span",{children:_agyT.reopenLast})}):null` +
     `]}):null,` +
     `${jsxFn}("div",{className:"agy-chat-tabs-actions",children:[${actionsChildren}]})` +
     `]})} `;
@@ -256,18 +266,24 @@ function isPatchActive() {
 }
 
 async function promptReload(message) {
-  const action = await vscode.window.showInformationMessage(message, "Reload Window");
-  if (action === "Reload Window") {
+  const btn = isSpanishEnv() ? "Recargar ventana" : "Reload Window";
+  const action = await vscode.window.showInformationMessage(message, btn);
+  if (action === btn) {
     vscode.commands.executeCommand("workbench.action.reloadWindow");
   }
 }
 
 function activate(context) {
+  const es = isSpanishEnv();
   context.subscriptions.push(
     vscode.commands.registerCommand("antigravityChatTabs.enable", async () => {
       try {
         applyPatch();
-        await promptReload("Antigravity Chat Tabs enabled! Reload the window to apply changes.");
+        await promptReload(
+          es
+            ? "¡Antigravity Chat Tabs activado! Recarga la ventana para aplicar los cambios."
+            : "Antigravity Chat Tabs enabled! Reload the window to apply changes."
+        );
       } catch (err) {
         vscode.window.showErrorMessage(`Antigravity Chat Tabs Error: ${err.message}`);
       }
@@ -275,7 +291,11 @@ function activate(context) {
     vscode.commands.registerCommand("antigravityChatTabs.disable", async () => {
       try {
         restorePatch();
-        await promptReload("Antigravity Chat Tabs disabled and default header restored. Reload the window to apply.");
+        await promptReload(
+          es
+            ? "Antigravity Chat Tabs desactivado y encabezado original restaurado. Recarga la ventana."
+            : "Antigravity Chat Tabs disabled and default header restored. Reload the window to apply."
+        );
       } catch (err) {
         vscode.window.showErrorMessage(`Antigravity Chat Tabs Error: ${err.message}`);
       }
@@ -283,19 +303,22 @@ function activate(context) {
     vscode.commands.registerCommand("antigravityChatTabs.status", () => {
       const active = isPatchActive();
       vscode.window.showInformationMessage(
-        `Antigravity Chat Tabs is currently ${active ? "ENABLED" : "DISABLED"}.`
+        es
+          ? `Antigravity Chat Tabs está actualmente ${active ? "ACTIVO" : "INACTIVO"}.`
+          : `Antigravity Chat Tabs is currently ${active ? "ENABLED" : "DISABLED"}.`
       );
     })
   );
 
-  // Auto-apply after Antigravity IDE updates or extension version upgrades
   const config = vscode.workspace.getConfiguration("antigravityChatTabs");
   if (config.get("autoApplyOnStartup", true)) {
     try {
       if (!isPatchCurrent()) {
         applyPatch();
         promptReload(
-          "Antigravity Chat Tabs: Session tabs were automatically updated. Reload window to activate."
+          es
+            ? "Antigravity Chat Tabs: Las pestañas se actualizaron automáticamente. Recarga la ventana para activarlas."
+            : "Antigravity Chat Tabs: Session tabs were automatically updated. Reload window to activate."
         );
       }
     } catch (err) {
