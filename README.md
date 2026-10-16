@@ -6,7 +6,7 @@ Adds a **Kiro-style horizontal multi-session tab bar** to the **Antigravity IDE*
 
 ---
 
-## ✨ Features (v1.4.0)
+## ✨ Features (v1.4.1)
 
 - **Per-Tab Context Isolation (Files, Consoles, Artifacts & Browser)**:
   - 📄 **Isolated `Changes Overview`**: Each conversation tab displays and tracks only the files created or modified by *that* session (never mixing diffs from other parallel tabs or losing the trace of modified documents).
@@ -31,7 +31,7 @@ Adds a **Kiro-style horizontal multi-session tab bar** to the **Antigravity IDE*
 
 ---
 
-## 🇪🇸 Características en Español (`v1.4.0`)
+## 🇪🇸 Características en Español (`v1.4.1`)
 
 - **Aislamiento Total por Pestaña (Archivos, Consolas, Artifacts y Browser)**:
   - 📄 **Archivos Modificados (`Changes Overview`) por sesión**: Cada pestaña muestra y conserva la traza únicamente de los documentos creados o editados en esa conversación, sin mezclarse con otras pestañas en paralelo.

@@ -5,7 +5,7 @@ const crypto = require("crypto");
 const vm = require("vm");
 
 const PATCH_MARKER = "agy-chat-tabs-bar";
-const PATCH_VERSION = "agy-chat-tabs-v1.4.0";
+const PATCH_VERSION = "agy-chat-tabs-v1.4.1";
 
 function isSpanishEnv() {
   try {
@@ -226,7 +226,7 @@ function buildDynamicPatch(content) {
       const rep1 =
         `{cascadeContext:{state:{agentStateProvider:${aspV}}}}=${coF}(),${cidV}=${wCF}(),${stV}=${j4eF}(),` +
         `{fileDiffData:_agyRawDiffs}=${ebuF}(),_agyConvSt=${nlF}(${aspV}),` +
-        `${fdV}=(()=>{try{let raw=Array.isArray(_agyRawDiffs)?_agyRawDiffs:[],sec=_agyConvSt?.accumulatedSections?.find(x=>x?.key==="file_diffs"),cDiffs=(sec?sec.items?.map(x=>x?.renderInfo?.content?.case==="fileDiff"?x.renderInfo.content.value:null).filter(Boolean):_agyConvSt?.trajectoryFileDiffs)||[],valid=cDiffs.filter(x=>x&&x.uri&&!x.isArtifactFile&&!x.isKnowledgeFile&&x.originalContent!==x.modifiedContent);if(!valid.length)return[];let norm=u=>{try{return decodeURIComponent(String(u||"")).replace(/^file:\\/\\/\\/?/i,"").replace(/\\\\/g,"/").replace(/^\\/+([a-zA-Z]:)/,"$1").toLowerCase().split("#")[0].replace(/\\/+$/,"")}catch(err){return String(u||"").toLowerCase()}},rawMap=new Map();for(let it of raw){if(it?.uri)rawMap.set(norm(it.uri),it)}let res=[],seen=new Set();for(let cd of valid){let k=norm(cd.uri);if(!k||seen.has(k))continue;seen.add(k);let matched=rawMap.get(k);if(matched){res.push(matched)}else{let orig=String(cd.originalContent??""),mod=String(cd.modifiedContent??""),oL=orig?orig.split(/\\r?\\n/):[],mL=mod?mod.split(/\\r?\\n/):[],oS=new Set(oL),mS=new Set(mL),ins=0,del=0;for(let ln of mL)if(!oS.has(ln))ins++;for(let ln of oL)if(!mS.has(ln))del++;if(ins===0&&del===0&&orig!==mod)ins=1;let cUri=String(cd.uri).startsWith("file://")?String(cd.uri):"file:///"+String(cd.uri).replace(/\\\\/g,"/").replace(/^\\/+/,"");res.push({uri:cUri,diffType:!orig?"addition":"modified",numInsertions:ins,numDeletions:del})}}return res}catch(err){return _agyRawDiffs||[]}})(),` +
+        `${fdV}=(()=>{try{let raw=Array.isArray(_agyRawDiffs)?_agyRawDiffs:[];if(!raw.length)return[];let sec=_agyConvSt?.accumulatedSections?.find(x=>x?.key==="file_diffs"),cDiffs=(sec?sec.items?.map(x=>x?.renderInfo?.content?.case==="fileDiff"?x.renderInfo.content.value:null).filter(Boolean):_agyConvSt?.trajectoryFileDiffs)||[],valid=cDiffs.filter(x=>x&&x.uri&&!x.isArtifactFile&&!x.isKnowledgeFile);if(!valid.length)return[];let norm=u=>{try{return decodeURIComponent(String(u||"")).replace(/^file:\\/\\/\\/?/i,"").replace(/\\\\/g,"/").replace(/^\\/+([a-zA-Z]:)/,"$1").toLowerCase().split("#")[0].replace(/\\/+$/,"")}catch(err){return String(u||"").toLowerCase()}},validSet=new Set(valid.map(x=>norm(x.uri)).filter(Boolean));return raw.filter(it=>it?.uri&&validSet.has(norm(it.uri)))}catch(err){return _agyRawDiffs||[]}})(),` +
         `{enableAutoExpandToolbar:${eatV}}=${nlF}(${prefV})`;
       tbRegion = tbRegion.replace(full1, rep1);
 
