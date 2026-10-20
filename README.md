@@ -6,10 +6,10 @@ Adds a **Kiro-style horizontal multi-session tab bar** to the **Antigravity IDE*
 
 ---
 
-## ✨ Features (v1.4.4)
+## ✨ Features (v1.4.5)
 
 - **Per-Tab Context Isolation (Files, Consoles, Artifacts & Browser)**:
-  - 📄 **Isolated `Changes Overview` (Foreground & Background)**: Each conversation tab maintains a live background state subscription (`wKo`) and attributes modified files strictly from explicit agent editing steps (`write_to_file`, `replace_file_content`, `multi_replace_file_content`, `codeAction`), ignoring read-only `view_file` calls and workspace-wide `USER_IMPLICIT` checkpoints so background file edits never leak into other tabs.
+  - 📄 **Isolated `Changes Overview` & Per-Tab `Accept all` / `Reject all`**: Each conversation tab maintains a live background state subscription (`wKo`), attributes modified files strictly from explicit agent editing steps, and isolates `Accept all` / `Reject all` so accepting or rejecting changes in one tab never touches pending diffs from other parallel tabs.
   - `>_` **Isolated Background Consoles**: Filters background terminal processes per session and hides completed/canceled tasks automatically.
   - 📥 **Isolated Artifacts**: Displays only the artifacts generated within the active conversation.
   - 🌐 **Isolated Browser Pages**: Associates active browser pages with the conversation tab that launched them.
@@ -31,10 +31,10 @@ Adds a **Kiro-style horizontal multi-session tab bar** to the **Antigravity IDE*
 
 ---
 
-## 🇪🇸 Características en Español (`v1.4.4`)
+## 🇪🇸 Características en Español (`v1.4.5`)
 
 - **Aislamiento Total por Pestaña (Archivos, Consolas, Artifacts y Browser)**:
-  - 📄 **Archivos Modificados (`Changes Overview`) en primer y segundo plano**: Mantiene suscripciones activas por pestaña y atribuye archivos únicamente por pasos explícitos de edición del agente (ignorando lecturas `view_file` y pasos implícitos del workspace), evitando que cambios terminados en segundo plano aparezcan en otra pestaña.
+  - 📄 **Archivos Modificados (`Changes Overview`) y botones `Accept all` / `Reject all` aislados por pestaña**: Mantiene suscripciones activas por sesión, atribuye archivos únicamente por pasos explícitos de edición del agente y hace que `Accept all` / `Reject all` afecten exclusivamente los archivos de la pestaña actual sin tocar los diffs pendientes de otras pestañas.
   - `>_` **Consolas en segundo plano por sesión**: Muestra solo los procesos actualmente en ejecución de esa pestaña.
   - 📥 **Artifacts y 🌐 Browser aislados por conversación**.
 - **Indicadores de Sesiones en Paralelo en Tiempo Real**:

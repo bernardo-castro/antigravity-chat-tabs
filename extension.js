@@ -5,7 +5,7 @@ const crypto = require("crypto");
 const vm = require("vm");
 
 const PATCH_MARKER = "agy-chat-tabs-bar";
-const PATCH_VERSION = "agy-chat-tabs-v1.4.4";
+const PATCH_VERSION = "agy-chat-tabs-v1.4.5";
 
 function isSpanishEnv() {
   try {
@@ -273,8 +273,25 @@ function buildDynamicPatch(content) {
         tbRegion = tbRegion.replace(full4, rep4);
       }
 
+      tbRegion = tbRegion.replace(
+        /await ([A-Za-z0-9_$]+)\(([A-Za-z0-9_$]+),([A-Za-z0-9_$]+),([A-Za-z0-9_$]+),([A-Za-z0-9_$]+)\)\}\},([A-Za-z0-9_$]+)=`\$\{([A-Za-z0-9_$]+)\.length\} File/,
+        "await $1($2,$3,$4,$5,Array.isArray($7)?$7.map(_x=>_x?.uri).filter(Boolean):void 0)}},$6=`${$7.length} File"
+      );
+
       patched = patched.slice(0, tbStart) + tbRegion + patched.slice(tbEnd);
     }
+  }
+
+  const closeAnchor = patched.indexOf("async handleCloseAllDiffZones(");
+  if (closeAnchor !== -1) {
+    const cStart = Math.max(0, closeAnchor - 100);
+    const cEnd = Math.min(patched.length, closeAnchor + 400);
+    let cRegion = patched.slice(cStart, cEnd);
+    cRegion = cRegion.replace(
+      /async handleCloseAllDiffZones\(([A-Za-z0-9_$]+),([A-Za-z0-9_$]+),([A-Za-z0-9_$]+),([A-Za-z0-9_$]+)\)\{await this\._commandService\.executeCommand\("antigravity\.closeAllDiffZones",\1,\2,\3,\4\)\}/,
+      'async handleCloseAllDiffZones($1,$2,$3,$4,_agyUris){try{if(Array.isArray(_agyUris)&&_agyUris.length>0&&this._cascadeService&&this._diffZoneService){let norm=window._agyNormUri||(u=>{try{return decodeURIComponent(String(u||"")).replace(/^file:\\/\\/\\/?/i,"").replace(/\\\\/g,"/").replace(/^\\/+([a-zA-Z]:)/,"$1").toLowerCase().split("#")[0].replace(/\\/+$/,"")}catch(err){return String(u||"").toLowerCase()}}),tSet=new Set(_agyUris.map(norm).filter(Boolean)),zIds=this._cascadeDiffState?.diffZoneIds||[],uMap=new Map();for(let zid of zIds){let u=this._diffZoneService.getUri(zid);if(u){let k=norm(u.toString());if(k&&!uMap.has(k))uMap.set(k,u)}}if(uMap.size>0&&tSet.size<uMap.size){let evType=$2?"accept-all-in-file":"reject-all-in-file";for(let[k,u]of uMap.entries()){if(tSet.has(k))this._cascadeService.fireEvent({type:evType,uri:u})}return}}}catch(err){}await this._commandService.executeCommand("antigravity.closeAllDiffZones",$1,$2,$3,$4)}'
+    );
+    patched = patched.slice(0, cStart) + cRegion + patched.slice(cEnd);
   }
 
   patched = patched.replace(
