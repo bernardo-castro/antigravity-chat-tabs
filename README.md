@@ -6,10 +6,10 @@ Adds a **Kiro-style horizontal multi-session tab bar** to the **Antigravity IDE*
 
 ---
 
-## ✨ Features (v1.5.0)
+## ✨ Features (v1.5.1)
 
-- **Smart Multi-Tab Overflow & Navigation (`v1.5.0`)**:
-  - 📐 **Elastic Chrome/VS Code-Style Tab Sizing**: Inactive tabs compress gracefully and hide their `✕` close button until hovered, while the **active tab** stays wide and readable.
+- **Smart Multi-Tab Overflow & Navigation (`v1.5.1`)**:
+  - 📐 **Content-Hugging Elastic Tab Sizing**: Short tabs (like `"Git"`) stay compact around their text without wasting space, while long titles truncate cleanly with `...` at `max-width` and compress gracefully when many tabs are open.
   - ▾ **Searchable All-Tabs Dropdown (`▾ N`)**: Compact dropdown button next to `+` with a live status indicator (`⚠️`, `🔄`, `✓`), instant search filter, and quick Pin (`📌`) / Close (`✕`) actions for all open tabs.
   - ↔️ **Hover Horizontal Scrollbar & Wheel Scroll**: Sleek `3px` horizontal scrollbar on hover plus mouse wheel scrolling across the tab strip.
 - **Per-Tab Context Isolation (Files, Consoles, Artifacts & Browser)**:
@@ -35,10 +35,10 @@ Adds a **Kiro-style horizontal multi-session tab bar** to the **Antigravity IDE*
 
 ---
 
-## 🇪🇸 Características en Español (`v1.5.0`)
+## 🇪🇸 Características en Español (`v1.5.1`)
 
-- **Navegación Inteligente para Muchas Pestañas (`v1.5.0`)**:
-  - 📐 **Pestañas Elásticas estilo Chrome/VS Code**: Las pestañas inactivas se compactan automáticamente y ocultan la `✕` hasta pasar el mouse, manteniendo la **pestaña activa** siempre ancha y legible.
+- **Navegación Inteligente para Muchas Pestañas (`v1.5.1`)**:
+  - 📐 **Ancho de Pestaña Ajustado al Contenido**: Las pestañas con nombres cortos (ej. `"Git"`) se ajustan a su texto sin malgastar espacio, mientras que los títulos largos se truncan con `...` y se compactan automáticamente cuando hay muchas pestañas abiertas.
   - ▾ **Selector Desplegable con Buscador (`▾ N`)**: Botón compacto junto al `+` con alerta de estado en vivo, filtro instantáneo y acciones rápidas para fijar (`📌`) o cerrar (`✕`) cualquier pestaña.
   - ↔️ **Barra de Scroll Horizontal Sutil y Rueda del Mouse**: Scrollbar fino de `3px` al pasar el cursor sobre la barra de pestañas.
 - **Aislamiento Total por Pestaña (Archivos, Consolas, Artifacts y Browser)**:
