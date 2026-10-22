@@ -6,8 +6,12 @@ Adds a **Kiro-style horizontal multi-session tab bar** to the **Antigravity IDE*
 
 ---
 
-## ✨ Features (v1.4.5)
+## ✨ Features (v1.5.0)
 
+- **Smart Multi-Tab Overflow & Navigation (`v1.5.0`)**:
+  - 📐 **Elastic Chrome/VS Code-Style Tab Sizing**: Inactive tabs compress gracefully and hide their `✕` close button until hovered, while the **active tab** stays wide and readable.
+  - ▾ **Searchable All-Tabs Dropdown (`▾ N`)**: Compact dropdown button next to `+` with a live status indicator (`⚠️`, `🔄`, `✓`), instant search filter, and quick Pin (`📌`) / Close (`✕`) actions for all open tabs.
+  - ↔️ **Hover Horizontal Scrollbar & Wheel Scroll**: Sleek `3px` horizontal scrollbar on hover plus mouse wheel scrolling across the tab strip.
 - **Per-Tab Context Isolation (Files, Consoles, Artifacts & Browser)**:
   - 📄 **Isolated `Changes Overview` & Per-Tab `Accept all` / `Reject all`**: Each conversation tab maintains a live background state subscription (`wKo`), attributes modified files strictly from explicit agent editing steps, and isolates `Accept all` / `Reject all` so accepting or rejecting changes in one tab never touches pending diffs from other parallel tabs.
   - `>_` **Isolated Background Consoles**: Filters background terminal processes per session and hides completed/canceled tasks automatically.
@@ -31,8 +35,12 @@ Adds a **Kiro-style horizontal multi-session tab bar** to the **Antigravity IDE*
 
 ---
 
-## 🇪🇸 Características en Español (`v1.4.5`)
+## 🇪🇸 Características en Español (`v1.5.0`)
 
+- **Navegación Inteligente para Muchas Pestañas (`v1.5.0`)**:
+  - 📐 **Pestañas Elásticas estilo Chrome/VS Code**: Las pestañas inactivas se compactan automáticamente y ocultan la `✕` hasta pasar el mouse, manteniendo la **pestaña activa** siempre ancha y legible.
+  - ▾ **Selector Desplegable con Buscador (`▾ N`)**: Botón compacto junto al `+` con alerta de estado en vivo, filtro instantáneo y acciones rápidas para fijar (`📌`) o cerrar (`✕`) cualquier pestaña.
+  - ↔️ **Barra de Scroll Horizontal Sutil y Rueda del Mouse**: Scrollbar fino de `3px` al pasar el cursor sobre la barra de pestañas.
 - **Aislamiento Total por Pestaña (Archivos, Consolas, Artifacts y Browser)**:
   - 📄 **Archivos Modificados (`Changes Overview`) y botones `Accept all` / `Reject all` aislados por pestaña**: Mantiene suscripciones activas por sesión, atribuye archivos únicamente por pasos explícitos de edición del agente y hace que `Accept all` / `Reject all` afecten exclusivamente los archivos de la pestaña actual sin tocar los diffs pendientes de otras pestañas.
   - `>_` **Consolas en segundo plano por sesión**: Muestra solo los procesos actualmente en ejecución de esa pestaña.
