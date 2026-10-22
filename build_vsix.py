@@ -5,7 +5,7 @@ import subprocess
 import zipfile
 
 EXT_DIR = os.path.dirname(os.path.abspath(__file__))
-VSIX_PATH = os.path.join(EXT_DIR, "antigravity-chat-tabs-1.5.1.vsix")
+VSIX_PATH = os.path.join(EXT_DIR, "antigravity-chat-tabs-1.6.0.vsix")
 OLD_IDE_EXT_DIRS = [
     os.path.expanduser(r"~\.antigravity-ide\extensions\jcastro.antigravity-chat-tabs-1.0.0"),
     os.path.expanduser(r"~\.antigravity-ide\extensions\BernardoCastroDev.antigravity-chat-tabs-1.0.0"),
@@ -24,17 +24,18 @@ OLD_IDE_EXT_DIRS = [
     os.path.expanduser(r"~\.antigravity-ide\extensions\BernardoCastroDev.antigravity-chat-tabs-1.4.4"),
     os.path.expanduser(r"~\.antigravity-ide\extensions\BernardoCastroDev.antigravity-chat-tabs-1.4.5"),
     os.path.expanduser(r"~\.antigravity-ide\extensions\BernardoCastroDev.antigravity-chat-tabs-1.5.0"),
+    os.path.expanduser(r"~\.antigravity-ide\extensions\BernardoCastroDev.antigravity-chat-tabs-1.5.1"),
 ]
 TARGET_IDE_EXT_DIR = os.path.expanduser(
-    r"~\.antigravity-ide\extensions\BernardoCastroDev.antigravity-chat-tabs-1.5.1"
+    r"~\.antigravity-ide\extensions\BernardoCastroDev.antigravity-chat-tabs-1.6.0"
 )
 
 MANIFEST = """<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
-    <Identity Language="en-US" Id="antigravity-chat-tabs" Version="1.5.1" Publisher="BernardoCastroDev" />
+    <Identity Language="en-US" Id="antigravity-chat-tabs" Version="1.6.0" Publisher="BernardoCastroDev" />
     <DisplayName>Antigravity Chat Tabs</DisplayName>
-    <Description xml:space="preserve">Adds a horizontal multi-session tab bar (Kiro style) to the Antigravity IDE Agent side panel, with per-workspace persistence and automatic re-application after IDE updates.</Description>
+    <Description xml:space="preserve">Professional multi-session tab suite for the Antigravity IDE Agent panel, featuring per-tab context isolation, a floating multi-monitor AI Aura companion, and per-workspace persistence.</Description>
     <Tags>antigravity,chat,tabs,agent,sessions</Tags>
     <Categories>Other,Appearance</Categories>
     <GalleryFlags>Public</GalleryFlags>
@@ -64,6 +65,7 @@ CONTENT_TYPES = """<?xml version="1.0" encoding="utf-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="json" ContentType="application/json"/>
   <Default Extension="js" ContentType="application/javascript"/>
+  <Default Extension="mjs" ContentType="application/javascript"/>
   <Default Extension="md" ContentType="text/markdown"/>
   <Default Extension="png" ContentType="image/png"/>
   <Default Extension="vsixmanifest" ContentType="text/xml"/>
@@ -72,16 +74,17 @@ CONTENT_TYPES = """<?xml version="1.0" encoding="utf-8"?>
 
 
 def main() -> None:
-    res = subprocess.run(
-        ["node", "--check", os.path.join(EXT_DIR, "extension.js")],
-        capture_output=True,
-        text=True,
-    )
-    if res.returncode != 0:
-        raise RuntimeError(res.stderr)
-    print("[OK] extension.js passed node --check")
+    for check_file in ["extension.js", "gravito-overlay.mjs"]:
+        res = subprocess.run(
+            ["node", "--check", os.path.join(EXT_DIR, check_file)],
+            capture_output=True,
+            text=True,
+        )
+        if res.returncode != 0:
+            raise RuntimeError(res.stderr)
+        print(f"[OK] {check_file} passed node --check")
 
-    files = ["package.json", "extension.js", "README.md", "LICENSE", "icon.png"]
+    files = ["package.json", "extension.js", "gravito-overlay.mjs", "README.md", "LICENSE", "icon.png"]
     with zipfile.ZipFile(VSIX_PATH, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("[Content_Types].xml", CONTENT_TYPES.strip())
         zf.writestr("extension.vsixmanifest", MANIFEST.strip())

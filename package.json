@@ -1,8 +1,8 @@
 {
   "name": "antigravity-chat-tabs",
   "displayName": "Antigravity Chat Tabs",
-  "description": "Adds a horizontal multi-session tab bar (Kiro style) to the Antigravity IDE Agent side panel, with per-workspace persistence and automatic re-application after IDE updates.",
-  "version": "1.5.1",
+  "description": "Professional multi-session tab suite for the Antigravity IDE Agent panel, featuring per-tab context isolation, a floating multi-monitor AI Aura companion, and per-workspace persistence.",
+  "version": "1.6.0",
   "publisher": "BernardoCastroDev",
   "author": {
     "name": "Bernardo Castro",
@@ -33,7 +33,8 @@
     "sessions"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onCommand:antigravityChatTabs.ensureGravitoOverlay"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -49,6 +50,10 @@
       {
         "command": "antigravityChatTabs.status",
         "title": "Antigravity Chat Tabs: Check Status"
+      },
+      {
+        "command": "antigravityChatTabs.ensureGravitoOverlay",
+        "title": "Antigravity Chat Tabs: Launch Floating Companion"
       }
     ],
     "configuration": {

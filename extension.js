@@ -3,9 +3,14 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const vm = require("vm");
+const http = require("http");
+const { spawn } = require("child_process");
 
 const PATCH_MARKER = "agy-chat-tabs-bar";
-const PATCH_VERSION = "agy-chat-tabs-v1.5.1";
+const PATCH_VERSION = "agy-chat-tabs-v1.6.10";
+const MAIN_PATCH_MARKER = "AGY_GRAVITO_OVERLAY_SCRIPT";
+const OVERLAY_PORT = 47831;
+const OVERLAY_VERSION = "1.6.10";
 
 function isSpanishEnv() {
   try {
@@ -18,12 +23,17 @@ function isSpanishEnv() {
 function getIdeFiles() {
   const appRoot = vscode.env.appRoot;
   const workbenchJs = path.join(appRoot, "out", "vs", "workbench", "workbench.desktop.main.js");
+  const mainJs = path.join(appRoot, "out", "main.js");
+  const overlayDest = path.join(appRoot, "out", "agy-gravito-overlay.mjs");
   const productJson = path.join(appRoot, "product.json");
   return {
     appRoot,
     workbenchJs,
+    mainJs,
+    overlayDest,
     productJson,
     wbBak: workbenchJs + ".bak",
+    mainBak: mainJs + ".bak",
     prodBak: productJson + ".bak",
   };
 }
@@ -39,6 +49,29 @@ function extract(pattern, text, name) {
     throw new Error(`Could not extract ${name} using ${pattern}`);
   }
   return m[1];
+}
+
+function buildMainPatch(content) {
+  let patched = content;
+  const startMarker = 'ece(),Qd("code/didStartMain")';
+  const endMarker = "else Rcs()});";
+  const sIdx = patched.indexOf(startMarker);
+  const eIdx = sIdx !== -1 ? patched.indexOf(endMarker, sIdx) : -1;
+  if (sIdx !== -1 && eIdx !== -1 && !patched.includes(MAIN_PATCH_MARKER)) {
+    patched =
+      patched.slice(0, sIdx) +
+      `if(process.env.${MAIN_PATCH_MARKER}){globalThis._agyElectron=QRt;import("url").then(u=>import(u.pathToFileURL(process.env.${MAIN_PATCH_MARKER}).href)).catch(e=>{console.error(e);process.exit(1)})}else{` +
+      patched.slice(sIdx, eIdx + endMarker.length) +
+      "}" +
+      patched.slice(eIdx + endMarker.length);
+  }
+
+  patched = patched.replace(
+    "doFocusWindow(){const t=this.win;t&&(t.isMinimized()&&t.restore(),t.focus())}",
+    'doFocusWindow(){const t=this.win;if(t){if(t.isMinimized())t.restore();t.show();if(process.platform==="win32"&&!t.isAlwaysOnTop()){t.setAlwaysOnTop(!0);t.focus();t.moveTop();t.setAlwaysOnTop(!1)}else{t.focus()}}}'
+  );
+
+  return patched;
 }
 
 function buildDynamicPatch(content) {
@@ -113,6 +146,12 @@ function buildDynamicPatch(content) {
   const qxeMatch = /([A-Za-z0-9_$]+)=[A-Za-z0-9_$]+=>\{if\(![A-Za-z0-9_$]+\)return;let [A-Za-z0-9_$]+=[A-Za-z0-9_$]+\.actionSpec;/.exec(qxeSlice);
   const qxeFn = qxeMatch ? qxeMatch[1] : null;
 
+  const portalMatch = /createPortal:\(\)=>([A-Za-z0-9_$]+)/.exec(content);
+  const createPortalFn = portalMatch ? portalMatch[1] : null;
+
+  const nhMatch = /focus\([A-Za-z0-9_$]+,[A-Za-z0-9_$]+\)\{return this\.nativeHostService\.focusWindow\([\s\S]{1,700}?Bi\(([A-Za-z0-9_$]+),[A-Za-z0-9_$]+,1\);async function/.exec(content);
+  const nativeHostToken = nhMatch ? nhMatch[1] : null;
+
   const actionsMarker = 'className:"flex items-center gap-2 px-0.5",children:[';
   const actionsIdx = returnBody.indexOf(actionsMarker);
   if (actionsIdx === -1) {
@@ -124,21 +163,25 @@ function buildDynamicPatch(content) {
   const backBtnEnd = returnBody.indexOf(`:${jsxFn}(`, backBtnStart);
   const backBtnJsx = returnBody.slice(backBtnStart, backBtnEnd);
 
-  const newClickRegex = new RegExp("disabled:" + isNewVar.replace(/\$/g, "\\$") + ",onClick:\\(\\)\\=>\\{(.+?)\\},className:");
-  const newClickMatch = newClickRegex.exec(returnBody);
-  const newConvClickCode = newClickMatch ? newClickMatch[1] : `${startNewVar}()`;
-
   const normHelper = `(raw=>{try{let p=typeof raw==="string"?JSON.parse(raw):raw;if(p&&typeof p==="object")return{openIds:Array.isArray(p.openIds)?p.openIds:[],closedIds:Array.isArray(p.closedIds)?p.closedIds:[],pinnedIds:Array.isArray(p.pinnedIds)?p.pinnedIds:[],customTitles:p.customTitles&&typeof p.customTitles==="object"?p.customTitles:{}}}catch(e){}return{openIds:[],closedIds:[],pinnedIds:[],customTitles:{}}})`;
 
-  const i18nHelper = `(()=>{let lang=String(window.navigator?.language||document.documentElement?.lang||"en").toLowerCase();return lang.startsWith("es")?{newSession:"Nueva sesión",newSessionTip:"Nueva conversación en paralelo (Ctrl+Shift+L)",backParent:"Volver al padre",unpinTip:"Desfijar pestaña",pinTip:"Fijar pestaña",closeTip:"Cerrar pestaña",tabHint:"(Doble clic para renombrar · Clic derecho para opciones)",waitDefault:"Requiere tu atención / confirmación",thinkingTip:"Pensando / procesando en paralelo...",doneTip:"Terminó de responder — clic para revisar",doneShort:"Respuesta lista",rename:"✏️ Renombrar pestaña",dblClick:"2×Clic",restoreTitle:"↺ Restaurar título original",pin:"📌 Fijar pestaña al inicio",unpin:"📌 Desfijar pestaña",close:"✕ Cerrar pestaña",closeOthers:"⇄ Cerrar otras pestañas",closeRight:"⇥ Cerrar pestañas a la derecha",reopenLast:"⟲ Reabrir última pestaña cerrada",convFallback:"Conversación",allTabsTip:"Ver y buscar todas las pestañas abiertas",searchTabs:"🔍 Filtrar pestañas...",noTabsMatch:"Sin coincidencias"}:{newSession:"New Session",newSessionTip:"New parallel conversation (Ctrl+Shift+L)",backParent:"Back to parent",unpinTip:"Unpin tab",pinTip:"Pin tab",closeTip:"Close tab",tabHint:"(Double-click to rename · Right-click for options)",waitDefault:"Needs your attention / confirmation",thinkingTip:"Thinking / processing in parallel...",doneTip:"Finished responding — click to review",doneShort:"Response ready",rename:"✏️ Rename tab",dblClick:"2×Click",restoreTitle:"↺ Restore original title",pin:"📌 Pin tab to start",unpin:"📌 Unpin tab",close:"✕ Close tab",closeOthers:"⇄ Close other tabs",closeRight:"⇥ Close tabs to the right",reopenLast:"⟲ Reopen last closed tab",convFallback:"Conversation",allTabsTip:"View and search all open tabs",searchTabs:"🔍 Filter tabs...",noTabsMatch:"No matching tabs"}})()`;
+  const i18nHelper = `(()=>{let lang=String(Intl.DateTimeFormat().resolvedOptions().locale||window.navigator?.language||document.documentElement?.lang||"es").toLowerCase();return lang.startsWith("es")?{lang:"es",newSession:"Nueva sesión",newSessionTip:"Nueva conversación en paralelo (Ctrl+Shift+L)",backParent:"Volver al padre",unpinTip:"Desfijar pestaña",pinTip:"Fijar pestaña",closeTip:"Cerrar pestaña",tabHint:"(Doble clic para renombrar · Clic derecho para opciones)",waitDefault:"Requiere tu atención / confirmación",thinkingTip:"Pensando / procesando en paralelo...",doneTip:"Terminó de responder — clic para revisar",doneShort:"Respuesta lista",rename:"✏️ Renombrar pestaña",dblClick:"2×Clic",restoreTitle:"↺ Restaurar título original",pin:"📌 Fijar pestaña al inicio",unpin:"📌 Desfijar pestaña",close:"✕ Cerrar pestaña",closeOthers:"⇄ Cerrar otras pestañas",closeRight:"⇥ Cerrar pestañas a la derecha",reopenLast:"⟲ Reabrir última pestaña cerrada",convFallback:"Conversación",allTabsTip:"Ver y buscar todas las pestañas abiertas",searchTabs:"🔍 Filtrar pestañas...",noTabsMatch:"Sin coincidencias",botTopTip:"Configurar compañero IA flotante",botActiveOn:"🟢 Activo",botActiveOff:"⚪ Apagado",botModeDesktop:"🖥️ En Pantalla",botModeIde:"🪟 En IDE",botReadyTitle:"¡Ya está OK la tarea!",botWaitTitle:"¡Requiere tu atención!",botFilesReady:"archivos listos",botFileReady:"archivo listo",botReplyReady:"Respuesta completada",botSoundOn:"🔊 Sonido",botSoundOff:"🔇 Mudo",botTestBtn:"💬 Probar",botResetPos:"🎯 Traer aquí",botHideBtn:"🙈 Ocultar",botDragTip:"Arrastra para mover · Clic para opciones",botTestTask:"Tarea de prueba lista"}:{lang:"en",newSession:"New Session",newSessionTip:"New parallel conversation (Ctrl+Shift+L)",backParent:"Back to parent",unpinTip:"Unpin tab",pinTip:"Pin tab",closeTip:"Close tab",tabHint:"(Double-click to rename · Right-click for options)",waitDefault:"Needs your attention / confirmation",thinkingTip:"Thinking / processing in parallel...",doneTip:"Finished responding — click to review",doneShort:"Response ready",rename:"✏️ Rename tab",dblClick:"2×Click",restoreTitle:"↺ Restore original title",pin:"📌 Pin tab to start",unpin:"📌 Unpin tab",close:"✕ Close tab",closeOthers:"⇄ Close other tabs",closeRight:"⇥ Close tabs to the right",reopenLast:"⟲ Reopen last closed tab",convFallback:"Conversation",allTabsTip:"View and search all open tabs",searchTabs:"🔍 Filter tabs...",noTabsMatch:"No matching tabs",botTopTip:"Configure floating AI companion",botActiveOn:"🟢 Active",botActiveOff:"⚪ Off",botModeDesktop:"🖥️ On Desktop",botModeIde:"🪟 In IDE",botReadyTitle:"Task is ready!",botWaitTitle:"Needs your input!",botFilesReady:"files ready",botFileReady:"file ready",botReplyReady:"Response completed",botSoundOn:"🔊 Sound",botSoundOff:"🔇 Muted",botTestBtn:"💬 Test",botResetPos:"🎯 Reset pos",botHideBtn:"🙈 Hide",botDragTip:"Drag to move · Click for options",botTestTask:"Sample task completed"}})()`;
+
+  const botCfgHelper = `(raw=>{try{let p=typeof raw==="string"?JSON.parse(raw):raw;if(p&&typeof p==="object"){let sk=p.skin==="aurora"||p.skin==="orbi"?"aurora":p.skin==="solaris"||p.skin==="pixel"?"solaris":"nebula",pr=p.soundPreset==="pulso"||p.soundPreset==="arpa"||p.soundPreset==="zen"||p.soundPreset==="cristal"?p.soundPreset:"cristal";return{x:typeof p.x==="number"?p.x:-1,y:typeof p.y==="number"?p.y:-1,skin:sk,sound:p.sound!==!1,soundPreset:pr,hidden:Boolean(p.hidden),desktopMode:p.desktopMode!==!1}}}catch(e){}return{x:-1,y:-1,skin:"nebula",sound:!0,soundPreset:"cristal",hidden:!1,desktopMode:!0}})`;
 
   const newFn =
     preamble +
     `,_agyServices=${ofFn}(),_agyTs=${nlFn}(_agyServices.trajectorySummariesProvider),_agyWs=${nlFn}(_agyServices.workspaceInfoProvider),_agyCurLiveState=${nlFn}(${agentStateVar})` +
     `,_agyGetAsp=${getAspFn ? `${getAspFn}()` : "null"}` +
     `,_agySummaries=_agyTs?.summaries||{},_agyWsUris=_agyWs?.workspaceUris||[],_agyWsKey="agy_chat_tabs_v2_"+(_agyWsUris[0]||"global")` +
-    `,_agyNorm=${normHelper},_agyT=${i18nHelper}` +
+    `,_agyNorm=${normHelper},_agyT=${i18nHelper},_agyNormBot=${botCfgHelper}` +
     `,[_agyTabState,_agySetTabState]=${useStateFn}(()=>_agyNorm(window.localStorage.getItem(_agyWsKey)))` +
+    `,[_agyBotCfg,_agySetBotCfg]=${useStateFn}(()=>_agyNormBot(window.localStorage.getItem("agy_gravito_cfg_v1")))` +
+    `,[_agyBotAlerts,_agySetBotAlerts]=${useStateFn}([])` +
+    `,[_agyBotMenu,_agySetBotMenu]=${useStateFn}(!1)` +
+    `,[_agyShowBotTop,_agySetShowBotTop]=${useStateFn}(null)` +
+    `,[_agyOverlayOnline,_agySetOverlayOnline]=${useStateFn}(!1)` +
+    `,[_agyBotDragging,_agySetBotDragging]=${useStateFn}(!1)` +
     `,[_agyEditingId,_agySetEditingId]=${useStateFn}(null)` +
     `,[_agyEditVal,_agySetEditVal]=${useStateFn}("")` +
     `,[_agyCtxMenu,_agySetCtxMenu]=${useStateFn}(null)` +
@@ -149,13 +192,22 @@ function buildDynamicPatch(content) {
     `,[_agyUnreadDone,_agySetUnreadDone]=${useStateFn}([])` +
     `,[_agyLiveTick,_agySetLiveTick]=${useStateFn}(0)` +
     `,_agyPrevRunRef=${useRefFn}({})` +
+    `,_agyPrevWaitRef=${useRefFn}({})` +
     `,_agyPrevModRef=${useRefFn}({})` +
+    `,_agyBotDragRef=${useRefFn}(null)` +
     `,_agyPrevWsKey=${useRefFn}(_agyWsKey);` +
+    `window._agyGravitoActive=!_agyBotCfg.hidden;` +
+    (nativeHostToken
+      ? `if(!window._agyNativeHost&&_agyServices?._instantiationService){try{window._agyNativeHost=_agyServices._instantiationService.invokeFunction(acc=>acc.get(${nativeHostToken}));window._agyNativeHost?.setBackgroundThrottling?.(!1)}catch(e){}}`
+      : "") +
+    `window._agyRestoreAndFocusIde=async()=>{try{let nh=window._agyNativeHost,wid=nh?.windowId;if(nh){await nh.focusWindow({mode:2,targetWindowId:wid});await nh.setWindowAlwaysOnTop(!0,{targetWindowId:wid});await nh.moveWindowTop({targetWindowId:wid});await nh.focusWindow({mode:2,targetWindowId:wid});setTimeout(()=>{try{nh.setWindowAlwaysOnTop(!1,{targetWindowId:wid})}catch(e){}},160)}}catch(e){}try{window.focus()}catch(e){}};` +
+    `window._agyPlayBotTone=(type,preset)=>{try{let Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)return;let ctx=new Ctx(),now=ctx.currentTime,pr=preset||"cristal",notes=pr==="pulso"?(type==="wait"?[[698.46,0,0.11,"triangle",0.06],[587.33,0.12,0.11,"triangle",0.06],[698.46,0.24,0.18,"triangle",0.07]]:[[587.33,0,0.09,"triangle",0.06],[880,0.09,0.1,"triangle",0.06],[1174.66,0.19,0.26,"sine",0.075]]):pr==="arpa"?(type==="wait"?[[329.63,0,0.18,"triangle",0.055],[493.88,0.07,0.2,"triangle",0.055],[659.25,0.14,0.28,"sine",0.06]]:[[349.23,0,0.22,"sine",0.045],[440,0.055,0.22,"sine",0.05],[523.25,0.11,0.24,"sine",0.055],[659.25,0.165,0.28,"sine",0.06],[880,0.22,0.38,"sine",0.065]]):pr==="zen"?(type==="wait"?[[261.63,0,0.35,"sine",0.065],[392,0.14,0.45,"sine",0.065]]:[[392,0,0.65,"sine",0.055],[587.33,0.02,0.62,"sine",0.045],[987.77,0.04,0.58,"sine",0.03]]):(type==="wait"?[[440,0,0.14,"sine",0.06],[659.25,0.13,0.24,"sine",0.065]]:[[523.25,0,0.14,"sine",0.055],[659.25,0.08,0.16,"sine",0.055],[783.99,0.16,0.2,"sine",0.06],[1046.5,0.24,0.34,"sine",0.05]]);for(let[freq,start,dur,wave,peak]of notes){let osc=ctx.createOscillator(),gain=ctx.createGain();osc.type=wave||"sine";osc.frequency.setValueAtTime(freq,now+start);gain.gain.setValueAtTime(0.0008,now+start);gain.gain.exponentialRampToValueAtTime(peak||0.055,now+start+0.018);gain.gain.exponentialRampToValueAtTime(0.0001,now+start+dur);osc.connect(gain);gain.connect(ctx.destination);osc.start(now+start);osc.stop(now+start+dur+0.02)}setTimeout(()=>{try{ctx.close()}catch(e){}},950)}catch(err){}};` +
     `if(!window._agyNormUri){window._agyNormUri=u=>{try{return decodeURIComponent(String(u||"")).replace(/^file:\\/\\/\\/?/i,"").replace(/\\\\/g,"/").replace(/^\\/+([a-zA-Z]:)/,"$1").toLowerCase().split("#")[0].replace(/\\/+$/,"")}catch(err){return String(u||"").toLowerCase()}}}` +
     `if(!window._agyGetDiffStore){window._agyGetDiffStore=()=>{if(!window._agyDiffStore){try{let p=JSON.parse(window.localStorage.getItem("agy_diff_store_v2")||"{}");window._agyDiffStore={owners:p.owners&&typeof p.owners==="object"?p.owners:{},meta:p.meta&&typeof p.meta==="object"?p.meta:{},convFiles:p.convFiles&&typeof p.convFiles==="object"?p.convFiles:{},stepTs:p.stepTs&&typeof p.stepTs==="object"?p.stepTs:{}}}catch(err){window._agyDiffStore={owners:{},meta:{},convFiles:{},stepTs:{}}}}return window._agyDiffStore}}` +
     `window._agyScanConvState=(cid,st)=>{try{if(!cid||!st)return!1;let norm=window._agyNormUri,store=window._agyGetDiffStore(),dirty=!1,rawSteps=st?.trajectorySlice?.stepsInSlice||[],allSteps=[];for(let i=0;i<rawSteps.length;i++){let s=rawSteps[i];if(s)allSteps.push([s,String(i)]);let sub=s?.subtrajectory?.steps;if(Array.isArray(sub)){for(let j=0;j<sub.length;j++){if(sub[j])allSteps.push([sub[j],i+"_"+j])}}}for(let[s,idxKey]of allSteps){let src=s?.metadata?.source;if(src===3||src===4||src==="USER_IMPLICIT"||src==="USER_EXPLICIT")continue;let u=null,us=${wmFn ? `${wmFn}(s)` : "s"}||s;if(us?.step?.case==="codeAction"){let sv=us.step.value;if(sv?.isArtifactFile)continue;u=${qxeFn ? `${qxeFn}(sv)` : "null"}||sv?.actionSpec?.spec?.value?.path?.absoluteUri||sv?.actionSpec?.spec?.value?.target?.value?.absoluteUri}if(!u&&s?.step?.case==="generic"){let tn=String(s?.metadata?.toolCall?.name||"").toLowerCase(),baseTn=tn.includes(":")?tn.split(":").pop():tn;if(baseTn==="write_to_file"||baseTn==="replace_file_content"||baseTn==="multi_replace_file_content"||baseTn==="sed_file"||baseTn==="notebook_edit"||baseTn==="create_file"||baseTn==="edit_file"||baseTn==="delete_file"){let args=s?.step?.value?.args||{};if(args.ArtifactMetadata||args.artifactMetadata)continue;u=args.TargetFile||args.targetFile||args.path||args.file_path||args.NotebookPath;if(!u&&s?.metadata?.toolCall?.argumentsJson){try{let aj=JSON.parse(s.metadata.toolCall.argumentsJson);if(aj&&(aj.ArtifactMetadata||aj.artifactMetadata))continue;u=aj?.TargetFile||aj?.targetFile||aj?.path||aj?.file_path}catch(err){}}}}if(!u)continue;let k=norm(u);if(!k)continue;let sIdx=s?.metadata?.sourceTrajectoryStepInfo?.stepIndex??idxKey,tm=s?.metadata?.completedAt||s?.metadata?.createdAt,ts=(tm&&tm.seconds!==void 0)?(Number(tm.seconds)*1000+Math.round(Number(tm.nanos||0)/1e6)):0;if(ts<=0){let sk=cid+":"+sIdx+":"+k;if(!store.stepTs[sk]){store.stepTs[sk]=Date.now();dirty=!0}ts=store.stepTs[sk]}if(!store.convFiles[cid])store.convFiles[cid]={};if(!store.convFiles[cid][k]||ts>store.convFiles[cid][k]){store.convFiles[cid][k]=ts;dirty=!0}let curMeta=store.meta[k];if(!curMeta||ts>=curMeta.ts){if(store.owners[k]!==cid||curMeta?.ts!==ts){store.meta[k]={cid,ts};store.owners[k]=cid;dirty=!0}}}if(dirty){try{window.localStorage.setItem("agy_diff_store_v2",JSON.stringify(store))}catch(err){}}return dirty}catch(err){return!1}};` +
-    `${useEffectFn}(()=>{if(_agyPrevWsKey.current!==_agyWsKey){_agyPrevWsKey.current=_agyWsKey;_agySetTabState(_agyNorm(window.localStorage.getItem(_agyWsKey)));_agySetEditingId(null);_agySetCtxMenu(null);_agySetShowDrop(null);_agySetUnreadDone([])}},[_agyWsKey]);` +
-    `${useEffectFn}(()=>{if(!_agyCtxMenu&&!_agyShowDrop)return;let onDown=ev=>{if(ev.target&&ev.target.closest&&(ev.target.closest(".agy-chat-ctx-menu")||ev.target.closest(".agy-chat-dropdown")||ev.target.closest(".agy-chat-drop-btn")))return;_agySetCtxMenu(null);_agySetShowDrop(null)},onKey=ev=>{if(ev.key==="Escape"){_agySetCtxMenu(null);_agySetShowDrop(null)}};window.addEventListener("mousedown",onDown,!0);window.addEventListener("keydown",onKey,!0);return()=>{window.removeEventListener("mousedown",onDown,!0);window.removeEventListener("keydown",onKey,!0)}},[_agyCtxMenu,_agyShowDrop]);` +
+    `let _agySaveBotCfg=${useCbFn}(updater=>{_agySetBotCfg(prev=>{let base=_agyNormBot(prev),next=_agyNormBot(typeof updater==="function"?updater(base):updater);try{window.localStorage.setItem("agy_gravito_cfg_v1",JSON.stringify(next))}catch(err){}return next})},[]);` +
+    `${useEffectFn}(()=>{if(_agyPrevWsKey.current!==_agyWsKey){_agyPrevWsKey.current=_agyWsKey;_agySetTabState(_agyNorm(window.localStorage.getItem(_agyWsKey)));_agySetEditingId(null);_agySetCtxMenu(null);_agySetShowDrop(null);_agySetShowBotTop(null);_agySetUnreadDone([]);_agySetBotAlerts([])}},[_agyWsKey]);` +
+    `${useEffectFn}(()=>{if(!_agyCtxMenu&&!_agyShowDrop&&!_agyBotMenu&&!_agyShowBotTop)return;let onDown=ev=>{if(ev.target&&ev.target.closest&&(ev.target.closest(".agy-chat-ctx-menu")||ev.target.closest(".agy-chat-dropdown")||ev.target.closest(".agy-chat-drop-btn")||ev.target.closest(".agy-gravito-top-popover")||ev.target.closest(".agy-gravito-root")))return;_agySetCtxMenu(null);_agySetShowDrop(null);_agySetBotMenu(!1);_agySetShowBotTop(null)},onKey=ev=>{if(ev.key==="Escape"){_agySetCtxMenu(null);_agySetShowDrop(null);_agySetBotMenu(!1);_agySetShowBotTop(null)}};window.addEventListener("mousedown",onDown,!0);window.addEventListener("keydown",onKey,!0);return()=>{window.removeEventListener("mousedown",onDown,!0);window.removeEventListener("keydown",onKey,!0)}},[_agyCtxMenu,_agyShowDrop,_agyBotMenu,_agyShowBotTop]);` +
     `let _agySaveTabs=${useCbFn}(updater=>{_agySetTabState(prev=>{let base=_agyNorm(prev),next=_agyNorm(typeof updater==="function"?updater(base):updater);try{window.localStorage.setItem(_agyWsKey,JSON.stringify(next))}catch(err){}return next})},[_agyWsKey])` +
     `,_agyWsConvIds=${useMemoFn}(()=>{let entries=Object.entries(_agySummaries).filter(([,sum])=>!sum?.trajectoryMetadata?.parentConversationId&&!sum?.annotations?.archived);entries.sort((x,z)=>{let tx=Number(x[1]?.lastUserInputTime?.seconds??x[1]?.lastModifiedTime?.seconds??0),tz=Number(z[1]?.lastUserInputTime?.seconds??z[1]?.lastModifiedTime?.seconds??0);return tz-tx});if(_agyWsUris.length>0){let wsLower=_agyWsUris.map(w=>String(w).toLowerCase()),filtered=entries.filter(([,sum])=>{let uris=(sum?.workspaces||[]).map(w=>w.workspaceFolderAbsoluteUri).concat(sum?.trajectoryMetadata?.workspaceUris||[]).filter(Boolean).map(w=>String(w).toLowerCase());return uris.some(uri=>wsLower.includes(uri))});if(filtered.length>0)return filtered.map(([id])=>id);return[]}return entries.slice(0,8).map(([id])=>id)},[_agySummaries,_agyWsUris]);` +
     `${useEffectFn}(()=>{if(Object.keys(_agySummaries).length===0&&!${curIdVar})return;_agySaveTabs(prev=>{let openIds=[...prev.openIds],closedIds=[...prev.closedIds],changed=!1;if(${curIdVar}&&closedIds.includes(${curIdVar})){closedIds=closedIds.filter(id=>id!==${curIdVar});changed=!0}for(let cid of _agyWsConvIds.slice(0,6).reverse()){if(!openIds.includes(cid)&&!closedIds.includes(cid)){openIds.push(cid);changed=!0}}if(${curIdVar}&&!openIds.includes(${curIdVar})){openIds.push(${curIdVar});changed=!0}if(Object.keys(_agySummaries).length>0){let filteredOpen=openIds.filter(id=>Boolean(_agySummaries[id])||id===${curIdVar});if(filteredOpen.length!==openIds.length){openIds=filteredOpen;changed=!0}}return changed?{...prev,openIds,closedIds}:prev})},[_agyWsConvIds,${curIdVar},_agySummaries,_agySaveTabs]);` +
@@ -163,8 +215,9 @@ function buildDynamicPatch(content) {
     `,_agyTabsRef=${useRefFn}(null);` +
     `${useEffectFn}(()=>{if(!_agyGetAsp)return;if(!window._agyTabSubs)window._agyTabSubs=new Map();let subs=window._agyTabSubs,activeIds=new Set(_agyDisplayTabs);for(let tid of _agyDisplayTabs){if(!tid||tid==="_new")continue;if(!subs.has(tid)){try{let prov=_agyGetAsp(tid);if(prov){window._agyScanConvState?.(tid,prov.getState?.());let lsn=prov.onDidChange?.(st=>{let changed=window._agyScanConvState?.(tid,st);if(changed||st?.status!==void 0)_agySetLiveTick(v=>(v+1)%1000000)});subs.set(tid,{prov,lsn})}}catch(err){}}else{let entry=subs.get(tid);if(entry?.prov)window._agyScanConvState?.(tid,entry.prov.getState?.())}}for(let[tid,entry]of Array.from(subs.entries())){if(!activeIds.has(tid)){try{entry.lsn?.dispose?.();entry.prov?.dispose?.()}catch(err){}subs.delete(tid)}}},[_agyDisplayTabs,_agyGetAsp]);` +
     `${useEffectFn}(()=>{if(${curIdVar}&&_agyCurLiveState?.conversationId===${curIdVar})window._agyScanConvState?.(${curIdVar},_agyCurLiveState)},[${curIdVar},_agyCurLiveState]);` +
-    `${useEffectFn}(()=>{let prevR=_agyPrevRunRef.current||{},prevM=_agyPrevModRef.current||{},newlyDone=[],startedRunning=[];for(let id of _agyDisplayTabs){let s=_agySummaries[id],subSt=window._agyTabSubs?.get(id)?.prov?.getState?.();if(!s&&!subSt)continue;let liveSt=(id===${curIdVar}&&_agyCurLiveState?.conversationId===id&&_agyCurLiveState?.status!==void 0)?Number(_agyCurLiveState.status):(subSt?.conversationId===id&&subSt?.status!==void 0&&Number(subSt.status)!==0)?Number(subSt.status):Number(s?.status||0),isWait=liveSt!==1&&Boolean(s?.waitingSteps&&s.waitingSteps.length>0),isRun=(liveSt===2||liveSt===3||liveSt===4)&&!isWait,modSec=Number(s?.lastModifiedTime?.seconds||0);if(isRun)startedRunning.push(id);if(id!==${curIdVar}){if((prevR[id]&&!isRun&&!isWait)||(prevM[id]&&modSec>prevM[id]&&!isRun&&!isWait)){newlyDone.push(id)}}prevR[id]=isRun;if(modSec)prevM[id]=modSec}_agyPrevRunRef.current=prevR;_agyPrevModRef.current=prevM;if(newlyDone.length>0||startedRunning.length>0){_agySetUnreadDone(prev=>{let next=prev.filter(id=>!startedRunning.includes(id));for(let id of newlyDone){if(!next.includes(id))next.push(id)}return next.length===prev.length&&next.every((v,i)=>v===prev[i])?prev:next})}},[_agySummaries,_agyDisplayTabs,${curIdVar},_agyCurLiveState?.status,_agyLiveTick]);` +
-    `${useEffectFn}(()=>{if(${curIdVar}){_agySetUnreadDone(prev=>prev.includes(${curIdVar})?prev.filter(id=>id!==${curIdVar}):prev)}},[${curIdVar}]);` +
+    `${useEffectFn}(()=>{let prevR=_agyPrevRunRef.current||{},prevW=_agyPrevWaitRef.current||{},prevM=_agyPrevModRef.current||{},newlyDone=[],newlyWait=[],startedRunning=[],stillWaiting=new Set();for(let id of _agyDisplayTabs){let s=_agySummaries[id],subSt=window._agyTabSubs?.get(id)?.prov?.getState?.();if(!s&&!subSt)continue;let liveSt=(id===${curIdVar}&&_agyCurLiveState?.conversationId===id&&_agyCurLiveState?.status!==void 0)?Number(_agyCurLiveState.status):(subSt?.conversationId===id&&subSt?.status!==void 0&&Number(subSt.status)!==0)?Number(subSt.status):Number(s?.status||0),isWait=liveSt!==1&&Boolean(s?.waitingSteps&&s.waitingSteps.length>0),isRun=(liveSt===2||liveSt===3||liveSt===4)&&!isWait,modSec=Number(s?.lastModifiedTime?.seconds||0);if(isRun)startedRunning.push(id);if(isWait){stillWaiting.add(id);if(!prevW[id])newlyWait.push(id)}if((prevR[id]&&!isRun&&!isWait)||(prevM[id]&&modSec>prevM[id]&&!isRun&&!isWait)){newlyDone.push(id)}prevR[id]=isRun;prevW[id]=isWait;if(modSec)prevM[id]=modSec}_agyPrevRunRef.current=prevR;_agyPrevWaitRef.current=prevW;_agyPrevModRef.current=prevM;let bgDone=newlyDone.filter(id=>id!==${curIdVar});if(bgDone.length>0||startedRunning.length>0){_agySetUnreadDone(prev=>{let next=prev.filter(id=>!startedRunning.includes(id));for(let id of bgDone){if(!next.includes(id))next.push(id)}return next.length===prev.length&&next.every((v,i)=>v===prev[i])?prev:next})}if(newlyDone.length>0||newlyWait.length>0||startedRunning.length>0){let store=window._agyGetDiffStore?window._agyGetDiffStore():{convFiles:{}};if(!_agyOverlayOnline){if(newlyWait.length>0&&_agyBotCfg.sound)window._agyPlayBotTone?.("wait",_agyBotCfg.soundPreset);else if(newlyDone.length>0&&_agyBotCfg.sound)window._agyPlayBotTone?.("done",_agyBotCfg.soundPreset)}_agySetBotAlerts(prev=>{let next=prev.filter(a=>!startedRunning.includes(a.tabId)&&(a.type!=="wait"||stillWaiting.has(a.tabId)));for(let id of newlyWait){let sum=_agySummaries[id],tTitle=(_agyTabState.customTitles&&_agyTabState.customTitles[id])||sum?.summary||(id===${curIdVar}?${cascadeIdVar}:_agyT.convFallback),wDetail=sum?.waitingSteps?.[0]?.step?.metadata?.toolSummary||_agyT.waitDefault;next=next.filter(a=>a.tabId!==id);next.unshift({id:"wait_"+id+"_"+Date.now(),tabId:id,type:"wait",title:tTitle,detail:wDetail,filesCount:0,autoHide:!1})}for(let id of newlyDone){let sum=_agySummaries[id],tTitle=(_agyTabState.customTitles&&_agyTabState.customTitles[id])||sum?.summary||(id===${curIdVar}?${cascadeIdVar}:_agyT.convFallback),fCount=Object.keys(store.convFiles?.[id]||{}).length;next=next.filter(a=>a.tabId!==id);next.unshift({id:"done_"+id+"_"+Date.now(),tabId:id,type:"done",title:tTitle,detail:"",filesCount:fCount,autoHide:!1})}return next.slice(0,5)})}},[_agySummaries,_agyDisplayTabs,${curIdVar},_agyCurLiveState?.status,_agyLiveTick,_agyBotCfg.sound,_agyBotCfg.soundPreset,_agyOverlayOnline,_agyTabState.customTitles]);` +
+    `${useEffectFn}(()=>{if(!_agyBotAlerts.some(a=>a.autoHide))return;let tm=setTimeout(()=>{_agySetBotAlerts(prev=>prev.filter(a=>!a.autoHide))},6500);return()=>clearTimeout(tm)},[_agyBotAlerts]);` +
+    `${useEffectFn}(()=>{if(${curIdVar}){_agySetUnreadDone(prev=>prev.includes(${curIdVar})?prev.filter(id=>id!==${curIdVar}):prev);_agySetBotAlerts(prev=>prev.some(a=>a.tabId===${curIdVar}&&a.type==="done"&&!a.autoHide)?prev.filter(a=>!(a.tabId===${curIdVar}&&a.type==="done"&&!a.autoHide)):prev)}},[${curIdVar}]);` +
     `${useEffectFn}(()=>{if(!_agyTabsRef.current)return;let targetId=${curIdVar}||"__new__",el=_agyTabsRef.current.querySelector(\`[data-agy-tab="\${targetId}"]\`);if(el&&typeof el.scrollIntoView==="function")el.scrollIntoView({behavior:"smooth",block:"nearest",inline:"nearest"})},[${curIdVar},_agyDisplayTabs.length]);` +
     `let _agyCloseTab=${useCbFn}((ev,tabId)=>{if(ev){ev.stopPropagation();ev.preventDefault()}let idx=_agyDisplayTabs.indexOf(tabId),remaining=_agyDisplayTabs.filter(id=>id!==tabId);_agySaveTabs(prev=>({...prev,openIds:remaining,pinnedIds:(prev.pinnedIds||[]).filter(id=>id!==tabId),closedIds:prev.closedIds.includes(tabId)?prev.closedIds:[...prev.closedIds,tabId]}));if(${curIdVar}===tabId){let nextId=remaining[idx]??remaining[idx-1];if(nextId)${setCascadeVar}(nextId);else ${startNewVar}()}},[_agyDisplayTabs,_agySaveTabs,${curIdVar},${setCascadeVar},${startNewVar}])` +
     `,_agyTogglePin=${useCbFn}(tabId=>{_agySaveTabs(prev=>{let pinned=prev.pinnedIds||[],isP=pinned.includes(tabId);return{...prev,pinnedIds:isP?pinned.filter(id=>id!==tabId):[...pinned,tabId]}});_agySetCtxMenu(null)},[_agySaveTabs])` +
@@ -178,7 +231,13 @@ function buildDynamicPatch(content) {
     `,_agyAnyBgWait=_agyTabMetaList.some(m=>!m.isActive&&m.isWaiting)` +
     `,_agyAnyBgRun=_agyTabMetaList.some(m=>!m.isActive&&m.isRunning)` +
     `,_agyAnyBgDone=_agyTabMetaList.some(m=>!m.isActive&&m.isDoneUnread)` +
-    `,_agyFilteredDrop=_agyTabMetaList.filter(m=>!_agyDropQuery.trim()||String(m.title||"").toLowerCase().includes(_agyDropQuery.trim().toLowerCase()));` +
+    `,_agyRunCount=_agyTabMetaList.filter(m=>m.isRunning).length` +
+    `,_agyFilteredDrop=_agyTabMetaList.filter(m=>!_agyDropQuery.trim()||String(m.title||"").toLowerCase().includes(_agyDropQuery.trim().toLowerCase()))` +
+    `,_agyBotMood=_agyBotAlerts.some(a=>a.type==="wait")||_agyAnyBgWait?"wait":_agyBotAlerts.some(a=>a.type==="done")||_agyAnyBgDone?"done":_agyRunCount>0?"run":"idle"` +
+    `,_agyTriggerTestAlert=()=>{if(_agyBotCfg.sound)window._agyPlayBotTone?.("done",_agyBotCfg.soundPreset);let tid=${curIdVar}||_agyDisplayTabs[0]||"test",tName=_agyTabMetaList.find(m=>m.tabId===tid)?.title||_agyT.botTestTask;_agySetBotAlerts(p=>[{id:"test_"+Date.now(),tabId:tid,type:"done",title:tName,detail:"",filesCount:2,autoHide:!0},...p].slice(0,4))};` +
+    `window._agyOnOverlayAction=act=>{if(!act)return;if(act.type==="jump"){window._agyRestoreAndFocusIde?.();if(act.tabId&&act.tabId!=="test"){${backToConvExpr};${setCascadeVar}(act.tabId);_agySetUnreadDone(p=>p.filter(x=>x!==act.tabId))}_agySetBotAlerts(p=>p.filter(x=>x.id!==act.alertId&&x.tabId!==act.tabId))}else if(act.type==="togglePin"){if(act.tabId)_agyTogglePin(act.tabId)}else if(act.type==="closeTab"){if(act.tabId)_agyCloseTab(null,act.tabId)}else if(act.type==="focusIde"){window._agyRestoreAndFocusIde?.()}else if(act.type==="dismiss"){_agySetBotAlerts(p=>{let target=p.find(x=>x.id===act.alertId);if(target?.tabId||act.tabId){let tid=target?.tabId||act.tabId;_agySetUnreadDone(u=>u.filter(x=>x!==tid))}return p.filter(x=>x.id!==act.alertId)})}else if(act.type==="setSkin"){_agySaveBotCfg(p=>({...p,skin:act.skin}))}else if(act.type==="setSound"){_agySaveBotCfg(p=>({...p,sound:act.sound}))}else if(act.type==="setSoundPreset"){_agySaveBotCfg(p=>({...p,soundPreset:act.preset,sound:!0}))}else if(act.type==="setActive"){_agySaveBotCfg(p=>({...p,hidden:!act.active}))}else if(act.type==="testAlert"){_agyTriggerTestAlert()}};` +
+    `${useEffectFn}(()=>{let pushState=async(extra={})=>{try{let r=await window.fetch("http://127.0.0.1:${OVERLAY_PORT}/state",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({active:!_agyBotCfg.hidden,desktopMode:!0,skin:_agyBotCfg.skin,sound:_agyBotCfg.sound,soundPreset:_agyBotCfg.soundPreset,mood:_agyBotMood,runCount:_agyRunCount,runningTabIds:_agyTabMetaList.filter(m=>m.isRunning).map(m=>m.tabId),tabs:_agyTabMetaList.map(m=>({tabId:m.tabId,title:m.title,isActive:m.isActive,isPinned:m.isPinned,status:m.isWaiting?"wait":m.isRunning?"run":m.isDoneUnread?"done":"idle"})),alerts:_agyBotAlerts,lang:_agyT.lang,...extra})});if(r.ok){_agySetOverlayOnline(!0);let d=await r.json();if(Array.isArray(d?.actions)){for(let a of d.actions)window._agyOnOverlayAction?.(a)}if(!window._agyGravitoSSE||window._agyGravitoSSE.readyState===2){try{let es=new window.EventSource("http://127.0.0.1:${OVERLAY_PORT}/events");es.onmessage=ev=>{try{let a=JSON.parse(ev.data);if(a&&a.type!=="connected")window._agyOnOverlayAction?.(a)}catch(e){}};es.onerror=()=>{try{es.close()}catch(e){}window._agyGravitoSSE=null};window._agyGravitoSSE=es}catch(e){}}}}catch(err){_agySetOverlayOnline(!1);if(!_agyBotCfg.hidden){let now=Date.now();if(!window._agyLastSpawnReq||now-window._agyLastSpawnReq>4500){window._agyLastSpawnReq=now;try{_agyServices?._commandService?.executeCommand?.("antigravityChatTabs.ensureGravitoOverlay")}catch(e){}}}}};window._agyPushOverlayState=pushState;pushState();let iv=setInterval(()=>pushState(),2500);return()=>clearInterval(iv)},[_agyBotCfg.hidden,_agyBotCfg.skin,_agyBotCfg.sound,_agyBotCfg.soundPreset,_agyBotMood,_agyRunCount,_agyBotAlerts,_agyDisplayTabs,${curIdVar},_agyTabState,_agyUnreadDone]);` +
+    `let _agyOrbPalette=_agyBotMood==="wait"?{c1:"#fde68a",c2:"#f59e0b",c3:"#b45309"}:_agyBotMood==="done"?{c1:"#a7f3d0",c2:"#10b981",c3:"#065f46"}:_agyBotMood==="run"?{c1:"#e0f2fe",c2:"#38bdf8",c3:"#1d4ed8"}:_agyBotCfg.skin==="aurora"?{c1:"#a5f3fc",c2:"#06b6d4",c3:"#0f766e"}:_agyBotCfg.skin==="solaris"?{c1:"#fbcfe8",c2:"#ec4899",c3:"#7e22ce"}:{c1:"#e0e7ff",c2:"#818cf8",c3:"#3730a3"};` +
     `return ${jsxFn}("div",{className:"${PATCH_MARKER} ${PATCH_VERSION}",children:[` +
     `${jsxFn}("style",{children:\`` +
     `@keyframes agySpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }` +
@@ -217,8 +276,13 @@ function buildDynamicPatch(content) {
     `input.agy-chat-tab-input { flex: 1 1 0%; width: 100%; min-width: 40px; background: transparent !important; background-color: transparent !important; color: inherit !important; border: none !important; outline: none !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; font-family: inherit !important; font-size: 12px !important; font-weight: inherit !important; line-height: 1.2 !important; height: auto !important; caret-color: #60a5fa !important; -webkit-appearance: none !important; appearance: none !important; }` +
     `input.agy-chat-tab-input::selection { background: rgba(96, 165, 250, 0.28) !important; color: inherit !important; }` +
     `.agy-chat-tabs-actions { display: flex; align-items: center; gap: 6px; padding: 0 6px; flex-shrink: 0; border-left: 1px solid rgba(128, 128, 128, 0.18); }` +
-    `.agy-chat-drop-btn { position: relative; display: flex; align-items: center; justify-content: center; gap: 3px; height: 22px; padding: 0 6px; border-radius: 4px; cursor: pointer; font-size: 11px; color: var(--vscode-foreground); opacity: 0.78; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(128, 128, 128, 0.2); transition: opacity 0.12s ease, background-color 0.12s ease; }` +
+    `.agy-chat-drop-btn { position: relative; display: flex; align-items: center; justify-content: center; gap: 4px; height: 22px; padding: 0 6px; border-radius: 4px; cursor: pointer; font-size: 11px; color: var(--vscode-foreground); opacity: 0.82; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(128, 128, 128, 0.22); transition: opacity 0.12s ease, background-color 0.12s ease, border-color 0.12s ease; }` +
     `.agy-chat-drop-btn:hover, .agy-chat-drop-btn.open { opacity: 1; background: rgba(59, 130, 246, 0.18); border-color: rgba(96, 165, 250, 0.45); }` +
+    `.agy-gravito-top-popover { position: fixed; z-index: 99999; width: 242px; display: flex; flex-direction: column; gap: 7px; padding: 8px; border-radius: 14px; background: linear-gradient(160deg, rgba(17, 24, 39, 0.97) 0%, rgba(8, 12, 22, 0.99) 100%); color: #f1f5f9; border: 1px solid rgba(129, 140, 248, 0.38); box-shadow: 0 14px 32px rgba(0, 0, 0, 0.72), 0 0 20px rgba(99, 102, 241, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.12); font-size: 11px; }` +
+    `.agy-gravito-top-track { display: flex; gap: 4px; padding: 3.5px; border-radius: 11px; background: rgba(2, 6, 18, 0.68); border: 1px solid rgba(255, 255, 255, 0.06); box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5); }` +
+    `.agy-gravito-top-pill { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 5px; border-radius: 8px; text-align: center; cursor: pointer; font-size: 11px; font-weight: 500; color: #94a3b8; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); transition: all 0.15s ease; white-space: nowrap; }` +
+    `.agy-gravito-top-pill:hover { color: #f8fafc; background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.18); }` +
+    `.agy-gravito-top-pill.active { background: linear-gradient(135deg, rgba(99, 102, 241, 0.34), rgba(168, 85, 247, 0.22)); border-color: rgba(129, 140, 248, 0.7); color: #ffffff; font-weight: 600; box-shadow: 0 2px 10px rgba(99, 102, 241, 0.25); }` +
     `.agy-chat-dropdown { position: fixed; z-index: 99999; width: 265px; max-height: 340px; display: flex; flex-direction: column; padding: 6px; border-radius: 7px; background: var(--vscode-menu-background, #1e1e2e); color: var(--vscode-menu-foreground, #e2e8f0); border: 1px solid var(--vscode-menu-border, rgba(128, 128, 128, 0.28)); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5); font-size: 12px; }` +
     `.agy-chat-drop-search { width: 100%; box-sizing: border-box; padding: 5px 8px; margin-bottom: 5px; border-radius: 4px; font-size: 11.5px; background: rgba(0, 0, 0, 0.25) !important; color: inherit !important; border: 1px solid rgba(128, 128, 128, 0.28) !important; outline: none !important; }` +
     `.agy-chat-drop-search:focus { border-color: var(--vscode-focusBorder, #3b82f6) !important; }` +
@@ -236,10 +300,17 @@ function buildDynamicPatch(content) {
     `${activeTabVar}!=="conversation"?${jsxFn}("div",{className:"flex items-center px-2 py-1",children:${backBtnJsx}}):` +
     `${jsxFn}("div",{ref:_agyTabsRef,onWheel:ev=>{if(_agyTabsRef.current&&(ev.deltaY!==0||ev.deltaX!==0))_agyTabsRef.current.scrollLeft+=(ev.deltaY!==0?ev.deltaY:ev.deltaX)},className:"agy-chat-tabs-strip",children:[` +
     `${parentIdVar}&&${jsxFn}("div",{onClick:()=>{${setCascadeVar}(${parentIdVar})},title:\`\${_agyT.backParent}: \${${parentTitleVar}}\`,className:"agy-chat-tab",style:{minWidth:"auto",flex:"0 0 auto"},children:[${jsxFn}(${iconComp},{name:"arrow_back",size:13}),${jsxFn}("span",{className:"truncate",style:{maxWidth:"80px"},children:${parentTitleVar}})]}),` +
-    `..._agyTabMetaList.map(m=>{let{tabId,rawTitle,customTitle,title,isPinned,isEditing,isActive,isWaiting,isRunning,isDoneUnread,waitMsg}=m;return ${jsxFn}("div",{"data-agy-tab":tabId,draggable:!isEditing,onDragStart:ev=>{_agySetDragId(tabId);try{ev.dataTransfer.effectAllowed="move";ev.dataTransfer.setData("text/plain",tabId)}catch(e){}},onDragOver:ev=>{ev.preventDefault();if(_agyDragId&&_agyDragId!==tabId&&_agyDragOverId!==tabId)_agySetDragOverId(tabId)},onDragLeave:()=>{if(_agyDragOverId===tabId)_agySetDragOverId(null)},onDrop:ev=>{ev.preventDefault();ev.stopPropagation();if(_agyDragId&&_agyDragId!==tabId)_agyReorderTabs(_agyDragId,tabId);_agySetDragId(null);_agySetDragOverId(null)},onDragEnd:()=>{_agySetDragId(null);_agySetDragOverId(null)},onClick:()=>{if(!isEditing){_agySetUnreadDone(prev=>prev.filter(id=>id!==tabId));${backToConvExpr};${setCascadeVar}(tabId)}},onDoubleClick:ev=>{ev.stopPropagation();_agyStartRename(tabId,rawTitle)},onContextMenu:ev=>{ev.preventDefault();ev.stopPropagation();_agySetShowDrop(null);_agySetCtxMenu({x:Math.min(ev.clientX,window.innerWidth-210),y:Math.min(ev.clientY,window.innerHeight-230),tabId,rawTitle,isPinned,hasCustom:Boolean(customTitle)})},onAuxClick:ev=>{if(ev.button===1&&!isPinned)_agyCloseTab(ev,tabId)},title:isWaiting?\`⚠️ \${title} — \${waitMsg}\`:isRunning?\`🔄 \${title} — \${_agyT.thinkingTip}\`:isDoneUnread?\`✅ \${title} — \${_agyT.doneShort}\`:isPinned?\`📌 \${title} \${_agyT.tabHint}\`:\`\${title} \${_agyT.tabHint}\`,className:"agy-chat-tab"+(isActive?" active":"")+(isEditing?" editing":"")+(isPinned?" pinned":"")+(isRunning?" is-running":"")+(isWaiting?" waiting-attention":"")+(isDoneUnread?" done-unread":"")+(_agyDragId===tabId?" dragging":"")+(_agyDragOverId===tabId?" drag-over":""),style:isEditing?void 0:{minWidth:Math.min(72,Math.max(38,String(title||"").length*6+26))+"px"},children:[isPinned?${jsxFn}("span",{className:"agy-chat-tab-pin",onClick:ev=>{ev.stopPropagation();_agyTogglePin(tabId)},title:_agyT.unpinTip,children:"📌"}):null,isWaiting?${jsxFn}("span",{className:"agy-status-waiting",title:\`⚠️ \${waitMsg}\`}):isRunning?${jsxFn}("span",{className:"agy-status-thinking",title:\`🔄 \${_agyT.thinkingTip}\`}):isDoneUnread?${jsxFn}("span",{className:"agy-status-done",title:\`✅ \${_agyT.doneTip}\`,children:"✓"}):null,isEditing?${jsxFn}("input",{type:"text",spellCheck:!1,ref:el=>{if(el&&!el.dataset.agyInit){el.dataset.agyInit="1";el.focus();try{let l=el.value.length;el.setSelectionRange(l,l)}catch(e){}setTimeout(()=>{try{el.focus();let l=el.value.length;el.setSelectionRange(l,l)}catch(e){}},15)}},className:"agy-chat-tab-input",style:{background:"transparent",backgroundColor:"transparent",color:"inherit",border:"none",outline:"none",boxShadow:"none",padding:0,margin:0,width:"100%",minWidth:"40px",fontSize:"12px",fontFamily:"inherit",fontWeight:"inherit",lineHeight:"inherit",height:"auto",caretColor:"#60a5fa"},value:_agyEditVal,onClick:ev=>ev.stopPropagation(),onDoubleClick:ev=>ev.stopPropagation(),onMouseDown:ev=>ev.stopPropagation(),onChange:ev=>_agySetEditVal(ev.target.value),onBlur:()=>_agyCommitRename(tabId,_agyEditVal),onKeyDown:ev=>{ev.stopPropagation();if(ev.key==="Enter")_agyCommitRename(tabId,_agyEditVal);else if(ev.key==="Escape")_agySetEditingId(null)}}):${jsxFn}("span",{className:"agy-chat-tab-label",children:title}),!isPinned&&!isEditing?${jsxFn}("span",{onClick:ev=>_agyCloseTab(ev,tabId),title:_agyT.closeTip,className:"agy-chat-tab-close",children:${jsxFn}(${iconComp},{name:"close",size:12})}):null]},tabId)})` +
+    `..._agyTabMetaList.map(m=>{let{tabId,rawTitle,customTitle,title,isPinned,isEditing,isActive,isWaiting,isRunning,isDoneUnread,waitMsg}=m;return ${jsxFn}("div",{"data-agy-tab":tabId,draggable:!isEditing,onDragStart:ev=>{_agySetDragId(tabId);try{ev.dataTransfer.effectAllowed="move";ev.dataTransfer.setData("text/plain",tabId)}catch(e){}},onDragOver:ev=>{ev.preventDefault();if(_agyDragId&&_agyDragId!==tabId&&_agyDragOverId!==tabId)_agySetDragOverId(tabId)},onDragLeave:()=>{if(_agyDragOverId===tabId)_agySetDragOverId(null)},onDrop:ev=>{ev.preventDefault();ev.stopPropagation();if(_agyDragId&&_agyDragId!==tabId)_agyReorderTabs(_agyDragId,tabId);_agySetDragId(null);_agySetDragOverId(null)},onDragEnd:()=>{_agySetDragId(null);_agySetDragOverId(null)},onClick:()=>{if(!isEditing){_agySetUnreadDone(prev=>prev.filter(id=>id!==tabId));${backToConvExpr};${setCascadeVar}(tabId)}},onDoubleClick:ev=>{ev.stopPropagation();_agyStartRename(tabId,rawTitle)},onContextMenu:ev=>{ev.preventDefault();ev.stopPropagation();_agySetShowDrop(null);_agySetShowBotTop(null);_agySetCtxMenu({x:Math.min(ev.clientX,window.innerWidth-210),y:Math.min(ev.clientY,window.innerHeight-230),tabId,rawTitle,isPinned,hasCustom:Boolean(customTitle)})},onAuxClick:ev=>{if(ev.button===1&&!isPinned)_agyCloseTab(ev,tabId)},title:isWaiting?\`⚠️ \${title} — \${waitMsg}\`:isRunning?\`🔄 \${title} — \${_agyT.thinkingTip}\`:isDoneUnread?\`✅ \${title} — \${_agyT.doneShort}\`:isPinned?\`📌 \${title} \${_agyT.tabHint}\`:\`\${title} \${_agyT.tabHint}\`,className:"agy-chat-tab"+(isActive?" active":"")+(isEditing?" editing":"")+(isPinned?" pinned":"")+(isRunning?" is-running":"")+(isWaiting?" waiting-attention":"")+(isDoneUnread?" done-unread":"")+(_agyDragId===tabId?" dragging":"")+(_agyDragOverId===tabId?" drag-over":""),style:isEditing?void 0:{minWidth:Math.min(72,Math.max(38,String(title||"").length*6+26))+"px"},children:[isPinned?${jsxFn}("span",{className:"agy-chat-tab-pin",onClick:ev=>{ev.stopPropagation();_agyTogglePin(tabId)},title:_agyT.unpinTip,children:"📌"}):null,isWaiting?${jsxFn}("span",{className:"agy-status-waiting",title:\`⚠️ \${waitMsg}\`}):isRunning?${jsxFn}("span",{className:"agy-status-thinking",title:\`🔄 \${_agyT.thinkingTip}\`}):isDoneUnread?${jsxFn}("span",{className:"agy-status-done",title:\`✅ \${_agyT.doneTip}\`,children:"✓"}):null,isEditing?${jsxFn}("input",{type:"text",spellCheck:!1,ref:el=>{if(el&&!el.dataset.agyInit){el.dataset.agyInit="1";el.focus();try{let l=el.value.length;el.setSelectionRange(l,l)}catch(e){}setTimeout(()=>{try{el.focus();let l=el.value.length;el.setSelectionRange(l,l)}catch(e){}},15)}},className:"agy-chat-tab-input",style:{background:"transparent",backgroundColor:"transparent",color:"inherit",border:"none",outline:"none",boxShadow:"none",padding:0,margin:0,width:"100%",minWidth:"40px",fontSize:"12px",fontFamily:"inherit",fontWeight:"inherit",lineHeight:"inherit",height:"auto",caretColor:"#60a5fa"},value:_agyEditVal,onClick:ev=>ev.stopPropagation(),onDoubleClick:ev=>ev.stopPropagation(),onMouseDown:ev=>ev.stopPropagation(),onChange:ev=>_agySetEditVal(ev.target.value),onBlur:()=>_agyCommitRename(tabId,_agyEditVal),onKeyDown:ev=>{ev.stopPropagation();if(ev.key==="Enter")_agyCommitRename(tabId,_agyEditVal);else if(ev.key==="Escape")_agySetEditingId(null)}}):${jsxFn}("span",{className:"agy-chat-tab-label",children:title}),!isPinned&&!isEditing?${jsxFn}("span",{onClick:ev=>_agyCloseTab(ev,tabId),title:_agyT.closeTip,className:"agy-chat-tab-close",children:${jsxFn}(${iconComp},{name:"close",size:12})}):null]},tabId)})` +
     `]}),` +
+    `_agyShowBotTop?${jsxFn}("div",{className:"agy-gravito-top-popover",style:{left:_agyShowBotTop.x+"px",top:_agyShowBotTop.y+"px"},onClick:ev=>ev.stopPropagation(),children:[` +
+    `${jsxFn}("div",{className:"agy-gravito-top-track",children:[["nebula","Nebula","radial-gradient(circle at 35% 35%, #e0e7ff 0%, #818cf8 55%, #a855f7 100%)","rgba(129, 140, 248, 0.9)"],["aurora","Aurora","radial-gradient(circle at 35% 35%, #d1fae5 0%, #10b981 55%, #06b6d4 100%)","rgba(16, 185, 129, 0.9)"],["solaris","Solaris","radial-gradient(circle at 35% 35%, #fef3c7 0%, #ec4899 55%, #f59e0b 100%)","rgba(236, 72, 153, 0.9)"]].map(([sk,lbl,bg,sh])=>${jsxFn}("div",{className:"agy-gravito-top-pill"+(_agyBotCfg.skin===sk?" active":""),style:{background:_agyBotCfg.skin===sk?void 0:"transparent",borderColor:_agyBotCfg.skin===sk?void 0:"transparent"},onClick:()=>_agySaveBotCfg(p=>({...p,skin:sk,hidden:!1})),children:[${jsxFn}("span",{style:{width:"8px",height:"8px",borderRadius:"9999px",background:bg,boxShadow:"0 0 6px "+sh,flexShrink:0}}),${jsxFn}("span",{children:lbl})]},sk))}),` +
+    `${jsxFn}("div",{className:"agy-gravito-top-track",children:[["cristal","Cristal"],["pulso","Pulso"],["arpa","Arpa"],["zen","Zen"]].map(([pr,lbl])=>${jsxFn}("div",{className:"agy-gravito-top-pill"+(_agyBotCfg.sound&&_agyBotCfg.soundPreset===pr?" active":""),style:{background:_agyBotCfg.sound&&_agyBotCfg.soundPreset===pr?"rgba(16,185,129,0.25)":"transparent",borderColor:_agyBotCfg.sound&&_agyBotCfg.soundPreset===pr?"rgba(52,211,153,0.6)":"transparent",padding:"5px 4px",fontSize:"10.5px"},onClick:()=>{window._agyPlayBotTone?.("done",pr);_agySaveBotCfg(p=>({...p,soundPreset:pr,sound:!0}))},children:lbl},pr)).concat([${jsxFn}("div",{className:"agy-gravito-top-pill"+(!_agyBotCfg.sound?" active":""),style:{flex:"0 0 28px",padding:"5px 2px",background:!_agyBotCfg.sound?"rgba(239,68,68,0.22)":"transparent",borderColor:!_agyBotCfg.sound?"rgba(248,113,113,0.5)":"transparent"},onClick:()=>_agySaveBotCfg(p=>({...p,sound:!p.sound})),children:"🔇"},"mute")])}),` +
+    `${jsxFn}("div",{style:{display:"flex",gap:"5px"},children:[` +
+    `${jsxFn}("div",{className:"agy-gravito-top-pill"+(!_agyBotCfg.hidden?" active":""),style:{borderColor:!_agyBotCfg.hidden?"rgba(16,185,129,0.5)":"rgba(148,163,184,0.18)",background:!_agyBotCfg.hidden?"rgba(16,185,129,0.16)":"rgba(255,255,255,0.04)"},onClick:()=>_agySaveBotCfg(p=>({...p,hidden:!p.hidden})),children:!_agyBotCfg.hidden?_agyT.botActiveOn:_agyT.botActiveOff}),` +
+    `${jsxFn}("div",{className:"agy-gravito-top-pill",onClick:()=>{_agySaveBotCfg(p=>({...p,x:-1,y:-1,hidden:!1}));window._agyPushOverlayState?.({resetPos:!0})},children:_agyT.botResetPos})` +
+    `]})]}):null,` +
     `_agyShowDrop?${jsxFn}("div",{className:"agy-chat-dropdown",style:{left:_agyShowDrop.x+"px",top:_agyShowDrop.y+"px"},children:[` +
-    `${jsxFn}("input",{type:"text",spellCheck:!1,placeholder:_agyT.searchTabs,className:"agy-chat-drop-search",value:_agyDropQuery,ref:el=>{if(el&&!el.dataset.agyFocus){el.dataset.agyFocus="1";setTimeout(()=>{try{el.focus()}catch(e){}},10)}},onChange:ev=>_agySetDropQuery(ev.target.value),onKeyDown:ev=>{ev.stopPropagation();if(ev.key==="Escape")_agySetShowDrop(null);else if(ev.key==="Enter"&&_agyFilteredDrop.length>0){let first=_agyFilteredDrop[0];_agySetUnreadDone(prev=>prev.filter(id=>id!==first.tabId));${backToConvExpr};${setCascadeVar}(first.tabId);_agySetShowDrop(null)}}}),` +
+    `${jsxFn}("input",{type:"text",spellCheck:!1,placeholder:_agyT.searchTabs,className:"agy-chat-drop-search",value:_agyDropQuery,ref:el=>{if(el&&!el.dataset.agyFocus){el.dataset.agyFocus="1";setTimeout(()=>{try{el.focus()}catch(e){}},10)}},onChange:ev=>_agySetDropQuery(ev.target.value),onKeyDown:ev=>{ev.stopPropagation();if(ev.key==="Escape")_agySetShowDrop(null);else if(ev.key==="Enter"&&_agyFilteredDrop.length>0){let first=_agyFilteredDrop[0];_agySetUnreadDone(prev=>prev.filter(id=>first.tabId!==id));${backToConvExpr};${setCascadeVar}(first.tabId);_agySetShowDrop(null)}}}),` +
     `${jsxFn}("div",{className:"agy-chat-drop-list",children:_agyFilteredDrop.length===0?[${jsxFn}("div",{style:{padding:"8px",opacity:0.55,textAlign:"center"},children:_agyT.noTabsMatch})]:_agyFilteredDrop.map(m=>${jsxFn}("div",{className:"agy-chat-drop-item"+(m.isActive?" active":""),onClick:()=>{_agySetUnreadDone(prev=>prev.filter(id=>id!==m.tabId));${backToConvExpr};${setCascadeVar}(m.tabId);_agySetShowDrop(null)},children:[m.isWaiting?${jsxFn}("span",{className:"agy-status-waiting",title:\`⚠️ \${m.waitMsg}\`}):m.isRunning?${jsxFn}("span",{className:"agy-status-thinking",title:\`🔄 \${_agyT.thinkingTip}\`}):m.isDoneUnread?${jsxFn}("span",{className:"agy-status-done",children:"✓"}):${jsxFn}("span",{style:{width:"8px",height:"8px",borderRadius:"9999px",background:m.isActive?"#3b82f6":"rgba(148,163,184,0.35)",flexShrink:0}}),${jsxFn}("span",{className:"truncate flex-1",title:m.title,children:m.title}),${jsxFn}("span",{className:"agy-chat-drop-act",style:{opacity:m.isPinned?0.95:0.4},title:m.isPinned?_agyT.unpinTip:_agyT.pinTip,onClick:ev=>{ev.stopPropagation();_agyTogglePin(m.tabId)},children:"📌"}),!m.isPinned?${jsxFn}("span",{className:"agy-chat-drop-act",title:_agyT.closeTip,onClick:ev=>{_agyCloseTab(ev,m.tabId)},children:${jsxFn}(${iconComp},{name:"close",size:12})}):null]},m.tabId))})` +
     `]}):null,` +
     `_agyCtxMenu?${jsxFn}("div",{className:"agy-chat-ctx-menu",style:{left:_agyCtxMenu.x+"px",top:_agyCtxMenu.y+"px"},children:[` +
@@ -254,7 +325,11 @@ function buildDynamicPatch(content) {
     `(_agyTabState.closedIds&&_agyTabState.closedIds.length>0)?${jsxFn}("div",{className:"agy-chat-ctx-item",onClick:()=>_agyReopenLast(),children:${jsxFn}("span",{children:_agyT.reopenLast})}):null` +
     `]}):null,` +
     `${jsxFn}("div",{className:"agy-chat-tabs-actions",children:[` +
-    `${activeTabVar}==="conversation"&&_agyTabMetaList.length>1?${jsxFn}("div",{className:"agy-chat-drop-btn"+(_agyShowDrop?" open":""),title:\`\${_agyT.allTabsTip} (\${_agyTabMetaList.length})\`,onClick:ev=>{ev.stopPropagation();if(_agyShowDrop){_agySetShowDrop(null)}else{let rect=ev.currentTarget.getBoundingClientRect();_agySetCtxMenu(null);_agySetDropQuery("");_agySetShowDrop({x:Math.max(8,Math.min(rect.right-265,window.innerWidth-275)),y:Math.min(rect.bottom+4,window.innerHeight-350)})}},children:[_agyAnyBgWait?${jsxFn}("span",{className:"agy-status-waiting"}):_agyAnyBgRun?${jsxFn}("span",{className:"agy-status-thinking"}):_agyAnyBgDone?${jsxFn}("span",{className:"agy-status-done",children:"✓"}):null,${jsxFn}("span",{children:\`▾ \${_agyTabMetaList.length}\`})]}):null,` +
+    `${jsxFn}("div",{className:"agy-chat-drop-btn"+(_agyShowBotTop?" open":""),title:_agyT.botTopTip,onClick:ev=>{ev.stopPropagation();if(_agyShowBotTop){_agySetShowBotTop(null)}else{let rect=ev.currentTarget.getBoundingClientRect();_agySetCtxMenu(null);_agySetShowDrop(null);_agySetShowBotTop({x:Math.max(8,Math.min(rect.right-272,window.innerWidth-282)),y:Math.min(rect.bottom+4,window.innerHeight-280)})}},children:[` +
+    `_agyBotCfg.hidden?${jsxFn}("span",{style:{width:"6px",height:"6px",borderRadius:"9999px",background:"rgba(148,163,184,0.45)",flexShrink:0}}):_agyBotMood==="wait"?${jsxFn}("span",{className:"agy-status-waiting"}):(_agyBotMood==="run"||_agyRunCount>0)?${jsxFn}("span",{className:"agy-status-thinking"}):_agyBotMood==="done"?${jsxFn}("span",{className:"agy-status-done",children:"✓"}):null,` +
+    `${jsxFn}("span",{style:{position:"relative",width:"13px",height:"13px",borderRadius:"54% 46% 60% 40% / 44% 58% 42% 56%",background:\`radial-gradient(circle at 40% 38%, rgba(255,255,255,0.95) 0%, \${_agyOrbPalette.c1} 35%, \${_agyOrbPalette.c2} 72%, transparent 100%)\`,boxShadow:_agyBotCfg.hidden?"none":\`0 0 8px \${_agyOrbPalette.c2}, 0 0 14px \${_agyOrbPalette.c2}\`,filter:"blur(0.4px)",opacity:_agyBotCfg.hidden?0.45:1,flexShrink:0}})` +
+    `]}),` +
+    `${activeTabVar}==="conversation"&&_agyTabMetaList.length>1?${jsxFn}("div",{className:"agy-chat-drop-btn"+(_agyShowDrop?" open":""),title:\`\${_agyT.allTabsTip} (\${_agyTabMetaList.length})\`,onClick:ev=>{ev.stopPropagation();if(_agyShowDrop){_agySetShowDrop(null)}else{let rect=ev.currentTarget.getBoundingClientRect();_agySetCtxMenu(null);_agySetShowBotTop(null);_agySetDropQuery("");_agySetShowDrop({x:Math.max(8,Math.min(rect.right-265,window.innerWidth-275)),y:Math.min(rect.bottom+4,window.innerHeight-350)})}},children:[_agyAnyBgWait?${jsxFn}("span",{className:"agy-status-waiting"}):_agyAnyBgRun?${jsxFn}("span",{className:"agy-status-thinking"}):_agyAnyBgDone?${jsxFn}("span",{className:"agy-status-done",children:"✓"}):null,${jsxFn}("span",{children:\`▾ \${_agyTabMetaList.length}\`})]}):null,` +
     `${actionsChildren}]})` +
     `]})} `;
 
@@ -322,6 +397,18 @@ function buildDynamicPatch(content) {
     patched = patched.slice(0, cStart) + cRegion + patched.slice(cEnd);
   }
 
+  const notifAnchor = patched.indexOf("agent-finished-responding-");
+  if (notifAnchor !== -1) {
+    const nStart = Math.max(0, notifAnchor - 600);
+    const nEnd = Math.min(patched.length, notifAnchor + 200);
+    let nRegion = patched.slice(nStart, nEnd);
+    nRegion = nRegion.replace(
+      /(\([A-Za-z0-9_$]+=!0\)=>\{let\{stepHandler:[A-Za-z0-9_$]+,cascadeContext:\{state:\{agentStateProvider:[A-Za-z0-9_$]+\}\}\}=[A-Za-z0-9_$]+\(\),n=)([A-Za-z0-9_$]+\(\)\.core\.notificationService)/,
+      "$1(window._agyGravitoActive?null:$2)"
+    );
+    patched = patched.slice(0, nStart) + nRegion + patched.slice(nEnd);
+  }
+
   patched = patched.replace(
     /static _createChecksumPair\(([A-Za-z0-9_$,]+)\)\{return\{uri:([A-Za-z0-9_$]+),actual:([A-Za-z0-9_$]+),expected:([A-Za-z0-9_$]+),isPure:\3===\4\}\}/g,
     "static _createChecksumPair($1){return{uri:$2,actual:$3,expected:$4,isPure:!0}}"
@@ -329,8 +416,73 @@ function buildDynamicPatch(content) {
   return patched;
 }
 
+function pingOverlay() {
+  return new Promise(resolve => {
+    const req = http.get(`http://127.0.0.1:${OVERLAY_PORT}/ping`, { timeout: 700 }, res => {
+      let data = "";
+      res.on("data", c => (data += c));
+      res.on("end", () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    });
+    req.on("error", () => resolve(null));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(null);
+    });
+  });
+}
+
+function quitOverlay() {
+  return new Promise(resolve => {
+    const req = http.get(`http://127.0.0.1:${OVERLAY_PORT}/quit`, { timeout: 600 }, () => resolve());
+    req.on("error", () => resolve());
+    req.on("timeout", () => {
+      req.destroy();
+      resolve();
+    });
+  });
+}
+
+async function ensureGravitoOverlay() {
+  try {
+    const pong = await pingOverlay();
+    if (pong && pong.ok && pong.version === OVERLAY_VERSION) {
+      return true;
+    }
+    if (pong && pong.ok) {
+      await quitOverlay();
+      await new Promise(r => setTimeout(r, 200));
+    }
+    const { overlayDest } = getIdeFiles();
+    const localOverlay = path.join(__dirname, "gravito-overlay.mjs");
+    const scriptPath = fs.existsSync(localOverlay) ? localOverlay : overlayDest;
+    if (!fs.existsSync(scriptPath)) return false;
+
+    const env = { ...process.env };
+    delete env.ELECTRON_RUN_AS_NODE;
+    env[MAIN_PATCH_MARKER] = scriptPath;
+    env.AGY_GRAVITO_PORT = String(OVERLAY_PORT);
+    env.AGY_PARENT_PID = String(process.pid);
+
+    const child = spawn(process.execPath, [], {
+      env,
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 function applyPatch() {
-  const { workbenchJs, productJson, wbBak, prodBak } = getIdeFiles();
+  const { workbenchJs, mainJs, overlayDest, productJson, wbBak, mainBak, prodBak } = getIdeFiles();
   const liveContent = fs.readFileSync(workbenchJs, "utf8");
 
   if (!liveContent.includes(PATCH_MARKER) || !fs.existsSync(wbBak)) {
@@ -347,6 +499,21 @@ function applyPatch() {
   }
   fs.writeFileSync(workbenchJs, patched, "utf8");
 
+  if (fs.existsSync(mainJs)) {
+    const liveMain = fs.readFileSync(mainJs, "utf8");
+    if (!liveMain.includes(MAIN_PATCH_MARKER) || !fs.existsSync(mainBak)) {
+      fs.copyFileSync(mainJs, mainBak);
+    }
+    const cleanMain = fs.readFileSync(mainBak, "utf8");
+    const patchedMain = buildMainPatch(cleanMain);
+    fs.writeFileSync(mainJs, patchedMain, "utf8");
+  }
+
+  const localOverlay = path.join(__dirname, "gravito-overlay.mjs");
+  if (fs.existsSync(localOverlay)) {
+    fs.copyFileSync(localOverlay, overlayDest);
+  }
+
   if (fs.existsSync(productJson)) {
     const newHash = computeVscodeChecksum(workbenchJs);
     const prodData = JSON.parse(fs.readFileSync(productJson, "utf8"));
@@ -358,20 +525,25 @@ function applyPatch() {
 }
 
 function restorePatch() {
-  const { workbenchJs, productJson, wbBak, prodBak } = getIdeFiles();
+  const { workbenchJs, mainJs, productJson, wbBak, mainBak, prodBak } = getIdeFiles();
   if (fs.existsSync(wbBak)) {
     fs.copyFileSync(wbBak, workbenchJs);
+  }
+  if (fs.existsSync(mainBak)) {
+    fs.copyFileSync(mainBak, mainJs);
   }
   if (fs.existsSync(prodBak)) {
     fs.copyFileSync(prodBak, productJson);
   }
+  quitOverlay().catch(() => {});
 }
 
 function isPatchCurrent() {
-  const { workbenchJs } = getIdeFiles();
+  const { workbenchJs, mainJs } = getIdeFiles();
   if (!fs.existsSync(workbenchJs)) return false;
   const content = fs.readFileSync(workbenchJs, "utf8");
-  return content.includes(PATCH_VERSION);
+  const mainOk = !fs.existsSync(mainJs) || fs.readFileSync(mainJs, "utf8").includes(MAIN_PATCH_MARKER);
+  return content.includes(PATCH_VERSION) && mainOk;
 }
 
 function isPatchActive() {
@@ -395,6 +567,7 @@ function activate(context) {
     vscode.commands.registerCommand("antigravityChatTabs.enable", async () => {
       try {
         applyPatch();
+        await ensureGravitoOverlay();
         await promptReload(
           es
             ? "¡Antigravity Chat Tabs activado! Recarga la ventana para aplicar los cambios."
@@ -423,6 +596,9 @@ function activate(context) {
           ? `Antigravity Chat Tabs está actualmente ${active ? "ACTIVO" : "INACTIVO"}.`
           : `Antigravity Chat Tabs is currently ${active ? "ENABLED" : "DISABLED"}.`
       );
+    }),
+    vscode.commands.registerCommand("antigravityChatTabs.ensureGravitoOverlay", async () => {
+      return await ensureGravitoOverlay();
     })
   );
 
@@ -441,8 +617,12 @@ function activate(context) {
       console.error("[Antigravity Chat Tabs] Auto-apply skipped:", err);
     }
   }
+
+  if (isPatchActive()) {
+    ensureGravitoOverlay();
+  }
 }
 
 function deactivate() {}
 
-module.exports = { activate, deactivate, buildDynamicPatch, applyPatch, isPatchCurrent };
+module.exports = { activate, deactivate, buildDynamicPatch, buildMainPatch, applyPatch, isPatchCurrent, ensureGravitoOverlay };
