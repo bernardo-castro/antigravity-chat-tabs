@@ -5,7 +5,7 @@ import path from "path";
 
 const PORT = Number(process.env.AGY_GRAVITO_PORT || 47831);
 const PARENT_PID = Number(process.env.AGY_PARENT_PID || 0);
-const VERSION = "1.6.11";
+const VERSION = "1.6.14";
 const STATE_DIR = path.join(os.tmpdir(), "agy-gravito-overlay-v1");
 const POS_FILE = path.join(STATE_DIR, "gravito-pos.json");
 
@@ -25,6 +25,12 @@ if (!electron || !electron.app) {
 
 const { app, BrowserWindow, screen, ipcMain } = electron;
 app.setPath("userData", path.join(STATE_DIR, "userdata"));
+try {
+  app.commandLine.appendSwitch("js-flags", "--max-old-space-size=64");
+  app.commandLine.appendSwitch("disable-spell-checking");
+  app.commandLine.appendSwitch("disable-extensions");
+  app.commandLine.appendSwitch("disable-background-networking");
+} catch (e) {}
 
 let win = null;
 let dragTimer = null;
@@ -38,6 +44,17 @@ let knownAlertIds = new Set();
 let dismissedAlertIds = new Set();
 let retainedAlertsMap = new Map();
 let initializedAlerts = false;
+let idleShutdownTimer = null;
+let hasBeenActivated = false;
+
+function addBoundedSet(setObj, val, max = 120) {
+  if (!val) return;
+  setObj.add(val);
+  if (setObj.size > max) {
+    const first = setObj.values().next().value;
+    if (first !== undefined) setObj.delete(first);
+  }
+}
 
 let pos = { x: null, y: null };
 let savedSkin = "nebula";
@@ -170,7 +187,20 @@ function syncWindow(playSoundType = null) {
   const shouldShow = Boolean(state.active && state.desktopMode);
   if (!shouldShow) {
     if (win.isVisible()) win.hide();
+    if (!idleShutdownTimer) {
+      const waitMs = hasBeenActivated ? 600 : 6500;
+      idleShutdownTimer = setTimeout(() => {
+        if (!state.active) {
+          process.exit(0);
+        }
+      }, waitMs);
+    }
     return;
+  }
+  hasBeenActivated = true;
+  if (idleShutdownTimer) {
+    clearTimeout(idleShutdownTimer);
+    idleShutdownTimer = null;
   }
   const layout = computeLayout();
   try {
@@ -271,6 +301,91 @@ const HTML_CONTENT = `<!DOCTYPE html>
       border-radius: 46% 54% 54% 46% / 54% 46% 52% 48%;
     }
   }
+  @keyframes agyInnerSwirlA {
+    0% { transform: rotate(0deg) scale(1.08, 0.86); border-radius: 58% 42% 62% 38% / 42% 60% 40% 58%; }
+    50% { transform: rotate(180deg) scale(0.86, 1.1); border-radius: 40% 60% 38% 62% / 60% 40% 58% 42%; }
+    100% { transform: rotate(360deg) scale(1.08, 0.86); border-radius: 58% 42% 62% 38% / 42% 60% 40% 58%; }
+  }
+  @keyframes agyInnerSwirlB {
+    0% { transform: rotate(360deg) scale(0.88, 1.08); }
+    50% { transform: rotate(180deg) scale(1.1, 0.86); }
+    100% { transform: rotate(0deg) scale(0.88, 1.08); }
+  }
+  @keyframes agyNodeWeave1 {
+    0% { transform: translate(-9px, -5px) scale(0.82); opacity: 0.65; }
+    25% { transform: translate(5px, -9px) scale(1.18); opacity: 1; }
+    50% { transform: translate(9px, 4px) scale(0.86); opacity: 0.75; }
+    75% { transform: translate(-4px, 8px) scale(1.14); opacity: 0.95; }
+    100% { transform: translate(-9px, -5px) scale(0.82); opacity: 0.65; }
+  }
+  @keyframes agyNodeWeave2 {
+    0% { transform: translate(8px, -6px) scale(1.12); opacity: 0.9; }
+    33% { transform: translate(-8px, -2px) scale(0.8); opacity: 0.65; }
+    66% { transform: translate(1px, 9px) scale(1.2); opacity: 1; }
+    100% { transform: translate(8px, -6px) scale(1.12); opacity: 0.9; }
+  }
+  @keyframes agyNodeWeave3 {
+    0% { transform: translate(-2px, 9px) scale(0.85); opacity: 0.7; }
+    33% { transform: translate(8px, 2px) scale(1.16); opacity: 0.95; }
+    66% { transform: translate(-6px, -8px) scale(0.95); opacity: 0.85; }
+    100% { transform: translate(-2px, 9px) scale(0.85); opacity: 0.7; }
+  }
+  @keyframes agyCoreRipple {
+    0% { transform: scale(0.55); opacity: 0.9; }
+    70% { transform: scale(1.65); opacity: 0.15; }
+    100% { transform: scale(1.85); opacity: 0; }
+  }
+  @keyframes agyDoneBloom {
+    0%, 100% { transform: scale(0.88); opacity: 0.82; }
+    50% { transform: scale(1.18); opacity: 1; }
+  }
+  @keyframes agyDoneWave {
+    0% { transform: scale(0.32); opacity: 0.95; }
+    65% { transform: scale(1.16); opacity: 0.35; }
+    100% { transform: scale(1.36); opacity: 0; }
+  }
+  @keyframes agyDoneMote1 {
+    0% { transform: translate(-7px, 7px) scale(0.75); opacity: 0; }
+    35% { transform: translate(-5px, -1px) scale(1.15); opacity: 0.95; }
+    75% { transform: translate(-2px, -9px) scale(0.9); opacity: 0.6; }
+    100% { transform: translate(0px, -13px) scale(0.5); opacity: 0; }
+  }
+  @keyframes agyDoneMote2 {
+    0% { transform: translate(7px, 6px) scale(0.7); opacity: 0; }
+    40% { transform: translate(5px, -2px) scale(1.18); opacity: 0.92; }
+    80% { transform: translate(2px, -10px) scale(0.85); opacity: 0.55; }
+    100% { transform: translate(-1px, -13px) scale(0.5); opacity: 0; }
+  }
+  @keyframes agyDoneMote3 {
+    0% { transform: translate(1px, 9px) scale(0.8); opacity: 0; }
+    45% { transform: translate(-2px, 0px) scale(1.2); opacity: 0.95; }
+    85% { transform: translate(3px, -8px) scale(0.85); opacity: 0.5; }
+    100% { transform: translate(4px, -12px) scale(0.5); opacity: 0; }
+  }
+  @keyframes agyWaitHeartbeat {
+    0% { transform: scale(0.84); opacity: 0.78; }
+    14% { transform: scale(1.28); opacity: 1; }
+    26% { transform: scale(0.92); opacity: 0.85; }
+    38% { transform: scale(1.22); opacity: 0.98; }
+    58% { transform: scale(0.86); opacity: 0.8; }
+    100% { transform: scale(0.84); opacity: 0.78; }
+  }
+  @keyframes agyWaitPulse1 {
+    0% { transform: scale(0.42); opacity: 0; }
+    12% { transform: scale(0.68); opacity: 0.95; }
+    48% { transform: scale(1.34); opacity: 0; }
+    100% { transform: scale(1.34); opacity: 0; }
+  }
+  @keyframes agyWaitPulse2 {
+    0%, 22% { transform: scale(0.42); opacity: 0; }
+    34% { transform: scale(0.68); opacity: 0.9; }
+    72% { transform: scale(1.38); opacity: 0; }
+    100% { transform: scale(1.38); opacity: 0; }
+  }
+  @keyframes agyWaitFlare {
+    0%, 100% { transform: rotate(-28deg) translateX(-7px) scale(0.9, 1.12); opacity: 0.78; }
+    50% { transform: rotate(28deg) translateX(7px) scale(1.12, 0.9); opacity: 1; }
+  }
   @keyframes agyMenuIn {
     0% { opacity: 0; transform: scale(0.94) translateY(3px); }
     100% { opacity: 1; transform: scale(1) translateY(0); }
@@ -312,7 +427,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
     opacity: 0.95;
     animation: agyGasMorph 5.4s linear infinite;
     pointer-events: none;
-    transition: background 0.25s ease;
+    transition: background 0.35s ease;
   }
   .orb-wrap:hover .aura-gas-outer {
     opacity: 1;
@@ -327,7 +442,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
     opacity: 0.92;
     animation: agyGasMorphRev 3.9s linear infinite;
     pointer-events: none;
-    transition: background 0.25s ease;
+    transition: background 0.35s ease;
   }
 
   .aura-gas-wisp {
@@ -338,7 +453,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
     opacity: 0.9;
     animation: agyGasMorph 2.9s ease-in-out infinite;
     pointer-events: none;
-    transition: background 0.25s ease;
+    transition: background 0.35s ease;
   }
 
   .aura-gas-inner {
@@ -348,7 +463,144 @@ const HTML_CONTENT = `<!DOCTYPE html>
     filter: blur(3px);
     animation: agyGasBreath 2.4s ease-in-out infinite;
     pointer-events: none;
-    transition: background 0.25s ease, box-shadow 0.25s ease;
+    transition: background 0.35s ease, box-shadow 0.35s ease;
+  }
+
+  .aura-thinking-layer,
+  .aura-done-layer,
+  .aura-wait-layer {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.45s ease-in-out;
+    mix-blend-mode: screen;
+  }
+  .aura-thinking-layer.active,
+  .aura-done-layer.active,
+  .aura-wait-layer.active {
+    opacity: 1;
+  }
+  .aura-vortex-a {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    filter: blur(4px);
+    animation: agyInnerSwirlA 1.35s linear infinite;
+  }
+  .aura-vortex-b {
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    filter: blur(3.2px);
+    animation: agyInnerSwirlB 1.75s linear infinite;
+  }
+  .aura-node {
+    position: absolute;
+    width: 13px;
+    height: 13px;
+    border-radius: 9999px;
+    filter: blur(2.2px);
+  }
+  .aura-node-1 {
+    animation: agyNodeWeave1 1.4s ease-in-out infinite;
+  }
+  .aura-node-2 {
+    width: 11px;
+    height: 11px;
+    animation: agyNodeWeave2 1.65s ease-in-out infinite;
+  }
+  .aura-node-3 {
+    width: 12px;
+    height: 12px;
+    animation: agyNodeWeave3 1.9s ease-in-out infinite;
+  }
+  .aura-core-ripple {
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border-radius: 9999px;
+    filter: blur(2.5px);
+    animation: agyCoreRipple 1.25s ease-out infinite;
+  }
+
+  .aura-done-bloom {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    border-radius: 9999px;
+    filter: blur(3.2px);
+    background: radial-gradient(circle, #ffffff 0%, #a7f3d0 42%, #10b981 78%, transparent 100%);
+    animation: agyDoneBloom 2.1s ease-in-out infinite;
+  }
+  .aura-done-wave {
+    position: absolute;
+    width: 42px;
+    height: 42px;
+    border-radius: 9999px;
+    filter: blur(2.4px);
+    background: radial-gradient(circle, transparent 34%, rgba(209, 250, 229, 0.95) 52%, rgba(52, 211, 153, 0.8) 66%, transparent 82%);
+    animation: agyDoneWave 2.3s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  }
+  .aura-done-wave-2 {
+    animation-delay: -1.15s;
+  }
+  .aura-done-mote {
+    position: absolute;
+    width: 11px;
+    height: 11px;
+    border-radius: 9999px;
+    filter: blur(2px);
+    background: radial-gradient(circle, #ffffff 0%, #a7f3d0 50%, #34d399 82%, transparent 100%);
+  }
+  .aura-done-mote-1 {
+    animation: agyDoneMote1 2.0s ease-in-out infinite;
+  }
+  .aura-done-mote-2 {
+    width: 10px;
+    height: 10px;
+    animation: agyDoneMote2 2.2s ease-in-out infinite -0.7s;
+  }
+  .aura-done-mote-3 {
+    width: 10px;
+    height: 10px;
+    animation: agyDoneMote3 2.4s ease-in-out infinite -1.4s;
+  }
+
+  .aura-wait-core {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    border-radius: 9999px;
+    filter: blur(3px);
+    background: radial-gradient(circle, #ffffff 0%, #fef08a 40%, #f59e0b 75%, transparent 100%);
+    animation: agyWaitHeartbeat 1.8s ease-in-out infinite;
+  }
+  .aura-wait-pulse {
+    position: absolute;
+    width: 42px;
+    height: 42px;
+    border-radius: 9999px;
+    filter: blur(2.6px);
+    background: radial-gradient(circle, transparent 30%, rgba(254, 240, 138, 0.95) 50%, rgba(245, 158, 11, 0.85) 66%, transparent 82%);
+  }
+  .aura-wait-pulse-1 {
+    animation: agyWaitPulse1 1.8s ease-out infinite;
+  }
+  .aura-wait-pulse-2 {
+    animation: agyWaitPulse2 1.8s ease-out infinite;
+  }
+  .aura-wait-flare {
+    position: absolute;
+    width: 34px;
+    height: 22px;
+    border-radius: 9999px;
+    filter: blur(3.2px);
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0%, rgba(254, 240, 138, 0.88) 45%, rgba(234, 88, 12, 0.65) 80%, transparent 100%);
+    animation: agyWaitFlare 1.6s ease-in-out infinite;
   }
 
   .badge {
@@ -604,6 +856,28 @@ const HTML_CONTENT = `<!DOCTYPE html>
     <div id="gasOuter" class="aura-gas-outer"></div>
     <div id="gasMid" class="aura-gas-mid"></div>
     <div id="gasWisp" class="aura-gas-wisp"></div>
+    <div id="thinkingLayer" class="aura-thinking-layer">
+      <div id="vortexA" class="aura-vortex-a"></div>
+      <div id="vortexB" class="aura-vortex-b"></div>
+      <div id="coreRipple" class="aura-core-ripple"></div>
+      <div id="node1" class="aura-node aura-node-1"></div>
+      <div id="node2" class="aura-node aura-node-2"></div>
+      <div id="node3" class="aura-node aura-node-3"></div>
+    </div>
+    <div id="doneLayer" class="aura-done-layer">
+      <div class="aura-done-bloom"></div>
+      <div class="aura-done-wave aura-done-wave-1"></div>
+      <div class="aura-done-wave aura-done-wave-2"></div>
+      <div class="aura-done-mote aura-done-mote-1"></div>
+      <div class="aura-done-mote aura-done-mote-2"></div>
+      <div class="aura-done-mote aura-done-mote-3"></div>
+    </div>
+    <div id="waitLayer" class="aura-wait-layer">
+      <div class="aura-wait-flare"></div>
+      <div class="aura-wait-pulse aura-wait-pulse-1"></div>
+      <div class="aura-wait-pulse aura-wait-pulse-2"></div>
+      <div class="aura-wait-core"></div>
+    </div>
     <div id="gasInner" class="aura-gas-inner"></div>
     <span id="orbBadge" class="badge" style="display:none;"></span>
   </div>
@@ -617,16 +891,32 @@ const HTML_CONTENT = `<!DOCTYPE html>
   const gasMid = document.getElementById("gasMid");
   const gasWisp = document.getElementById("gasWisp");
   const gasInner = document.getElementById("gasInner");
+  const thinkingLayer = document.getElementById("thinkingLayer");
+  const doneLayer = document.getElementById("doneLayer");
+  const waitLayer = document.getElementById("waitLayer");
+  const vortexA = document.getElementById("vortexA");
+  const vortexB = document.getElementById("vortexB");
+  const coreRipple = document.getElementById("coreRipple");
+  const node1 = document.getElementById("node1");
+  const node2 = document.getElementById("node2");
+  const node3 = document.getElementById("node3");
   const orbBadge = document.getElementById("orbBadge");
 
   let curData = null;
   let lastIgnore = true;
+  let sharedAudioCtx = null;
 
   function playTone(type, preset) {
     try {
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
-      const ctx = new Ctx();
+      if (!sharedAudioCtx || sharedAudioCtx.state === "closed") {
+        sharedAudioCtx = new Ctx();
+      }
+      if (sharedAudioCtx.state === "suspended") {
+        sharedAudioCtx.resume().catch(() => {});
+      }
+      const ctx = sharedAudioCtx;
       const now = ctx.currentTime;
       const pr = preset || "cristal";
       let notes = [];
@@ -681,9 +971,6 @@ const HTML_CONTENT = `<!DOCTYPE html>
         osc.start(now + start);
         osc.stop(now + start + dur + 0.02);
       }
-      setTimeout(() => {
-        try { ctx.close(); } catch (e) {}
-      }, 950);
     } catch (e) {}
   }
 
@@ -738,6 +1025,19 @@ const HTML_CONTENT = `<!DOCTYPE html>
         panelBorder: "rgba(245, 158, 11, 0.42)",
         panelGlow: "rgba(245, 158, 11, 0.18)",
         panelLine: "rgba(253, 224, 71, 0.75)",
+      };
+    }
+    if (!menuOpen && mood === "done") {
+      return {
+        c1: "#d1fae5",
+        c2: "#34d399",
+        c3: "#06b6d4",
+        aura: "conic-gradient(from 0deg, rgba(16,185,129,0.95), rgba(52,211,153,0.92), rgba(6,182,212,0.88), rgba(110,231,183,0.92), rgba(16,185,129,0.95))",
+        wisp: "conic-gradient(from 120deg, rgba(209,250,229,0.94), rgba(16,185,129,0.42) 45%, rgba(52,211,153,0.94), rgba(6,182,212,0.42) 90%, rgba(209,250,229,0.94))",
+        glow: "rgba(16, 185, 129, 0.92)",
+        panelBorder: "rgba(52, 211, 153, 0.42)",
+        panelGlow: "rgba(16, 185, 129, 0.2)",
+        panelLine: "rgba(110, 231, 183, 0.78)",
       };
     }
     const sk = normSkin(skin);
@@ -835,7 +1135,7 @@ const HTML_CONTENT = `<!DOCTYPE html>
     const waitCount = alerts.filter(a => a && a.type === "wait").length;
     const doneCount = alerts.filter(a => a && a.type === "done").length;
     const runCount = Math.max(0, Number(state.runCount || 0));
-    const effectiveMood = waitCount > 0 ? "wait" : doneCount > 0 ? "done" : runCount > 0 ? "run" : "idle";
+    const effectiveMood = waitCount > 0 ? "wait" : runCount > 0 ? "run" : doneCount > 0 ? "done" : "idle";
     const p = getPalette(sk, effectiveMood, menuOpen);
 
     if (playSoundType && state.sound) {
@@ -851,50 +1151,21 @@ const HTML_CONTENT = `<!DOCTYPE html>
     gasInner.style.background = \`radial-gradient(circle at 42% 40%, rgba(255,255,255,0.92) 0%, \${p.c1} 36%, \${p.c2} 72%, transparent 100%)\`;
     gasInner.style.boxShadow = \`0 0 16px \${p.glow}, 0 0 28px \${p.glow}\`;
 
-    const badgeSig = \`\${waitCount}:\${runCount}:\${doneCount}\`;
-    if (badgeSig !== lastBadgeSig) {
-      lastBadgeSig = badgeSig;
-      const segs = [];
-      if (waitCount > 0) segs.push({ type: "wait", count: waitCount });
-      if (runCount > 0) segs.push({ type: "run", count: runCount });
-      if (doneCount > 0) segs.push({ type: "done", count: doneCount });
+    thinkingLayer.className = "aura-thinking-layer" + (effectiveMood === "run" ? " active" : "");
+    doneLayer.className = "aura-done-layer" + (effectiveMood === "done" ? " active" : "");
+    waitLayer.className = "aura-wait-layer" + (effectiveMood === "wait" ? " active" : "");
 
-      if (segs.length === 0) {
-        orbBadge.style.display = "none";
-        orbBadge.innerHTML = "";
-      } else {
-        const isMulti = segs.length > 1;
-        const showNumbers = isMulti || segs[0].count > 1;
-        const sizeCls = isMulti ? "badge-multi" : showNumbers ? "badge-pill" : "badge-single-icon";
-        const toneCls = isMulti ? "" : "badge-" + segs[0].type;
-        orbBadge.style.display = "flex";
-        orbBadge.className = \`badge interactive \${sizeCls} \${toneCls}\`.trim();
+    vortexA.style.background = \`conic-gradient(from 0deg, transparent 0deg, \${p.c1} 55deg, rgba(255,255,255,0.95) 95deg, transparent 150deg, \${p.c2} 235deg, rgba(255,255,255,0.9) 275deg, transparent 360deg)\`;
+    vortexB.style.background = \`conic-gradient(from 90deg, transparent 0deg, rgba(255,255,255,0.92) 45deg, \${p.c1} 100deg, transparent 180deg, rgba(255,255,255,0.88) 230deg, \${p.c3} 290deg, transparent 360deg)\`;
+    coreRipple.style.background = \`radial-gradient(circle, rgba(255,255,255,0.95) 0%, \${p.c1} 45%, transparent 75%)\`;
+    const nodeGrad = \`radial-gradient(circle, #ffffff 0%, \${p.c1} 48%, \${p.c2} 80%, transparent 100%)\`;
+    node1.style.background = nodeGrad;
+    node2.style.background = nodeGrad;
+    node3.style.background = nodeGrad;
 
-        orbBadge.innerHTML = segs
-          .map(s => {
-            const iconHtml =
-              s.type === "wait"
-                ? '<span class="chat-icon-waiting"></span>'
-                : s.type === "run"
-                ? '<span class="chat-icon-thinking"></span>'
-                : '<span class="chat-icon-done">✓</span>';
-            const numHtml = showNumbers ? \`<span class="badge-num num-\${s.type}">\${s.count}</span>\` : "";
-            const clearAttr = s.type !== "run" ? \`data-clear-type="\${s.type}"\` : "";
-            const clearCls = s.type !== "run" ? "clearable" : "";
-            return \`<span class="badge-seg \${clearCls}" \${clearAttr}>\${iconHtml}\${numHtml}</span>\`;
-          })
-          .join('<span class="badge-sep"></span>');
-
-        orbBadge.querySelectorAll("[data-clear-type]").forEach(el => {
-          el.addEventListener("mousedown", ev => {
-            ev.stopPropagation();
-            ipcRenderer.send("gravito:action", {
-              type: "clearOneByType",
-              alertType: el.getAttribute("data-clear-type"),
-            });
-          });
-        });
-      }
+    if (orbBadge.style.display !== "none") {
+      orbBadge.style.display = "none";
+      orbBadge.innerHTML = "";
     }
 
     const hPos = openLeft ? "right:349px" : "left:349px";
@@ -1101,7 +1372,17 @@ ipcMain.on("gravito:dragEnd", () => {
   if (wasMoved) {
     savePrefs();
   } else {
+    const wasOpen = menuOpen;
     menuOpen = !menuOpen;
+    if (wasOpen && !menuOpen) {
+      for (const a of state.alerts || []) {
+        if (a && a.type === "done" && a.id) {
+          addBoundedSet(dismissedAlertIds, a.id);
+          retainedAlertsMap.delete(a.id);
+        }
+      }
+      state.alerts = (state.alerts || []).filter(a => a && a.type !== "done");
+    }
   }
   syncWindow();
 });
@@ -1110,7 +1391,7 @@ ipcMain.on("gravito:action", (_ev, act) => {
   if (!act) return;
   if (act.type === "dismiss") {
     if (act.alertId) {
-      dismissedAlertIds.add(act.alertId);
+      addBoundedSet(dismissedAlertIds, act.alertId);
       retainedAlertsMap.delete(act.alertId);
     }
     state.alerts = (state.alerts || []).filter(a => a.id !== act.alertId);
@@ -1121,7 +1402,7 @@ ipcMain.on("gravito:action", (_ev, act) => {
     const target = list.find(a => a && a.type === act.alertType) || list[0];
     if (target) {
       if (target.id) {
-        dismissedAlertIds.add(target.id);
+        addBoundedSet(dismissedAlertIds, target.id);
         retainedAlertsMap.delete(target.id);
       }
       state.alerts = list.filter(a => a.id !== target.id);
@@ -1130,12 +1411,12 @@ ipcMain.on("gravito:action", (_ev, act) => {
     }
   } else if (act.type === "jump") {
     if (act.alertId) {
-      dismissedAlertIds.add(act.alertId);
+      addBoundedSet(dismissedAlertIds, act.alertId);
       retainedAlertsMap.delete(act.alertId);
     }
     for (const a of state.alerts || []) {
       if (a && (a.id === act.alertId || a.tabId === act.tabId)) {
-        dismissedAlertIds.add(a.id);
+        addBoundedSet(dismissedAlertIds, a.id);
         retainedAlertsMap.delete(a.id);
       }
     }
@@ -1156,7 +1437,7 @@ ipcMain.on("gravito:action", (_ev, act) => {
       }
       for (const a of state.alerts || []) {
         if (a && a.tabId === act.tabId) {
-          dismissedAlertIds.add(a.id);
+          addBoundedSet(dismissedAlertIds, a.id);
           retainedAlertsMap.delete(a.id);
         }
       }
@@ -1274,14 +1555,14 @@ const server = http.createServer((req, res) => {
             initializedAlerts = true;
             for (const al of incoming) {
               if (al && al.id) {
-                knownAlertIds.add(al.id);
+                addBoundedSet(knownAlertIds, al.id);
                 retainedAlertsMap.set(al.id, al);
               }
             }
           } else {
             for (const al of incoming) {
               if (al && al.id && !knownAlertIds.has(al.id)) {
-                knownAlertIds.add(al.id);
+                addBoundedSet(knownAlertIds, al.id);
                 if (!newSoundType || al.type === "wait") {
                   newSoundType = al.type === "wait" ? "wait" : "done";
                 }

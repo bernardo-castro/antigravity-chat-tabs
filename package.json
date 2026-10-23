@@ -2,7 +2,7 @@
   "name": "antigravity-chat-tabs",
   "displayName": "Antigravity Chat Tabs",
   "description": "Professional multi-session tab suite for the Antigravity IDE Agent panel, featuring per-tab context isolation, a floating multi-monitor AI Aura companion, and per-workspace persistence.",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "publisher": "BernardoCastroDev",
   "author": {
     "name": "Bernardo Castro",
