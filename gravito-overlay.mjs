@@ -5,7 +5,7 @@ import path from "path";
 
 const PORT = Number(process.env.AGY_GRAVITO_PORT || 47831);
 const PARENT_PID = Number(process.env.AGY_PARENT_PID || 0);
-const VERSION = "1.6.10";
+const VERSION = "1.6.11";
 const STATE_DIR = path.join(os.tmpdir(), "agy-gravito-overlay-v1");
 const POS_FILE = path.join(STATE_DIR, "gravito-pos.json");
 
@@ -74,7 +74,7 @@ try {
 } catch (e) {}
 
 let state = {
-  active: true,
+  active: false,
   desktopMode: true,
   skin: savedSkin,
   sound: savedSound,

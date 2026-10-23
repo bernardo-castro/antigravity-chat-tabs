@@ -6,10 +6,10 @@ Professional multi-session workspace suite for **Antigravity IDE**. Transforms t
 
 ---
 
-## ✨ Features (v1.6.0)
+## ✨ Features (v1.6.1)
 
-- **✨ Floating Multi-Monitor AI Aura Companion (`v1.6.0`)**:
-  - 🖥️ **Always-On-Top Desktop Aura Cloud (Even with IDE Minimized)**: Organic floating circular aura that stays above all windows across any monitor, replacing generic IDE notifications.
+- **✨ Floating Multi-Monitor AI Aura Companion (`v1.6.1`, Opt-In by Default)**:
+  - 🖥️ **Always-On-Top Desktop Aura Cloud (Even with IDE Minimized)**: Organic floating circular aura that stays above all windows across any monitor, replacing generic IDE notifications. Starts **OFF by default** on first install so you can enable it whenever you want from the top-right bar button.
   - 🔄 **Synchronized Chat Status Badges & Multi-Task Counters**: Mirrors the exact chat status icons (`🔄` blue thinking spinner, `🟠` amber waiting indicator, `✓` emerald ready check) with automatic counters when multiple chats are running or completed (`[ 🔄 2 ]`, `[ ✓ 2 ]`, or combined `[ 🔄 1 │ ✓ 1 ]`), and clears notifications as you view, close, or click them.
   - 📋 **Instant Floating Tab Switcher**: Click the floating orb at any time to list all open chat tabs with their live status, and click any tab to restore/un-minimize Antigravity IDE, bring it to the front, and jump directly to that conversation.
   - 🎨 **3 Aura Styles & 4 Notification Sound Presets**: Configure your aura directly from the IDE top bar (`Nebula`, `Aurora`, `Solaris`), choose between 4 synthesized notification tones (`Cristal`, `Pulso`, `Arpa`, `Zen`) or mute (`🔇`), toggle visibility, or reset position (`🎯`).
@@ -40,10 +40,10 @@ Professional multi-session workspace suite for **Antigravity IDE**. Transforms t
 
 ---
 
-## 🇪🇸 Características en Español (`v1.6.0`)
+## 🇪🇸 Características en Español (`v1.6.1`)
 
-- **✨ Orbe de Aura IA Flotante Multimonitor (`v1.6.0`)**:
-  - 🖥️ **Siempre Visible en Escritorio (Incluso con el IDE Minimizado)**: Nube orgánica circular tipo aura que flota sobre cualquier ventana o monitor, reemplazando las notificaciones genéricas del IDE.
+- **✨ Orbe de Aura IA Flotante Multimonitor (`v1.6.1`, Opcional / Apagado por Defecto)**:
+  - 🖥️ **Siempre Visible en Escritorio (Incluso con el IDE Minimizado)**: Nube orgánica circular tipo aura que flota sobre cualquier ventana o monitor, reemplazando las notificaciones genéricas del IDE. Viene **apagado por defecto** al instalar o abrir por primera vez para que puedas activarlo cuando quieras desde el botón superior derecho de la barra de pestañas.
   - 🔄 **Iconos de Estado Sincronizados y Contadores Multitarea**: Imita exactamente los iconos de los chats (**Cargando azul** mientras piensa, **Círculo ámbar** cuando requiere atención y **Check verde `✓`** al terminar), mostrando contadores cuando hay más de un chat activo o terminado (`[ 🔄 2 ]`, `[ ✓ 2 ]`) o una cápsula combinada (`[ 🔄 1 │ ✓ 1 ]`), y eliminando el aviso al verlo, cerrarlo o pinchar el icono.
   - 📋 **Selector Rápido de Pestañas desde el Orbe**: Al presionar el orbe flotante se listan todas las pestañas abiertas con su estado en tiempo real; al hacer clic en cualquiera, des-minimiza Antigravity IDE, lo trae al frente y abre directamente esa pestaña.
   - 🎨 **3 Estilos de Aura y 4 Tonos de Notificación**: Personaliza el aura desde el botón superior del IDE (`Nebula`, `Aurora`, `Solaris`), elige entre 4 sonidos (`Cristal`, `Pulso`, `Arpa`, `Zen`) o silenciar (`🔇`), activar/ocultar o restablecer su posición (`🎯`).

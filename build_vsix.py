@@ -5,7 +5,7 @@ import subprocess
 import zipfile
 
 EXT_DIR = os.path.dirname(os.path.abspath(__file__))
-VSIX_PATH = os.path.join(EXT_DIR, "antigravity-chat-tabs-1.6.0.vsix")
+VSIX_PATH = os.path.join(EXT_DIR, "antigravity-chat-tabs-1.6.1.vsix")
 OLD_IDE_EXT_DIRS = [
     os.path.expanduser(r"~\.antigravity-ide\extensions\jcastro.antigravity-chat-tabs-1.0.0"),
     os.path.expanduser(r"~\.antigravity-ide\extensions\BernardoCastroDev.antigravity-chat-tabs-1.0.0"),
@@ -25,15 +25,16 @@ OLD_IDE_EXT_DIRS = [
     os.path.expanduser(r"~\.antigravity-ide\extensions\BernardoCastroDev.antigravity-chat-tabs-1.4.5"),
     os.path.expanduser(r"~\.antigravity-ide\extensions\BernardoCastroDev.antigravity-chat-tabs-1.5.0"),
     os.path.expanduser(r"~\.antigravity-ide\extensions\BernardoCastroDev.antigravity-chat-tabs-1.5.1"),
+    os.path.expanduser(r"~\.antigravity-ide\extensions\BernardoCastroDev.antigravity-chat-tabs-1.6.0"),
 ]
 TARGET_IDE_EXT_DIR = os.path.expanduser(
-    r"~\.antigravity-ide\extensions\BernardoCastroDev.antigravity-chat-tabs-1.6.0"
+    r"~\.antigravity-ide\extensions\BernardoCastroDev.antigravity-chat-tabs-1.6.1"
 )
 
 MANIFEST = """<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
-    <Identity Language="en-US" Id="antigravity-chat-tabs" Version="1.6.0" Publisher="BernardoCastroDev" />
+    <Identity Language="en-US" Id="antigravity-chat-tabs" Version="1.6.1" Publisher="BernardoCastroDev" />
     <DisplayName>Antigravity Chat Tabs</DisplayName>
     <Description xml:space="preserve">Professional multi-session tab suite for the Antigravity IDE Agent panel, featuring per-tab context isolation, a floating multi-monitor AI Aura companion, and per-workspace persistence.</Description>
     <Tags>antigravity,chat,tabs,agent,sessions</Tags>
